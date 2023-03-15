@@ -78,8 +78,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
         (gfm-mode)
         (goto-char (point-max))
         (insert (concat "\n" str))
-        (goto-char (point-max))
-        (save-buffer)))))
+        (goto-char (point-max))))))
 
 (defun c3po-rewrite-replace (beg end)
   "Rewrite the region BEG END and replace the selection with the result."
