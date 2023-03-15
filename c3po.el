@@ -23,14 +23,16 @@
 (require 'json)
 (require 'markdown-mode)
 
-(defvar c3po--developer-role "You are a large language model living inside Emacs, and the perfect programmer.
+(defvar c3po-developer-role "You are a large language model living inside Emacs, and the perfect programmer.
 Use a role of a Software Developer and Software Architect.
 Response MUST be concise.
-Response MUST use full and well written markdown, code blocks must use the right language tag.")
+Response MUST use full and well written markdown, code blocks must use the right language tag."
+  "Message for system setup of developer role.")
 
-(defvar c3po--writter-role "You are a large language model living inside Emacs, and the perfect writing assistance,
+(defvar c3po-writter-role "You are a large language model living inside Emacs, and the perfect writing assistance,
 your background is a Software Developer and Software Architect.
-Response MUST be concise.")
+Response MUST be concise."
+  "Message for system setup of writter role.")
 
 (defvar c3po-buffer-name "*C-3PO - ChatGPT" "The name of the C-3PO buffer.")
 (defvar c3po-api-key nil "The API key for the OpenAI API.")
@@ -46,7 +48,7 @@ Pass additional ARGS to the CALLBACK function."
          (lambda (response) (message "🤖: %s" response))))
   (setq c3po--last-role role)
   (let* ((api-key c3po-api-key)
-         (sys-content (if (eq role 'dev) c3po--developer-role c3po--writter-role))
+         (sys-content (if (eq role 'dev) c3po-developer-role c3po-writter-role))
          (url "https://api.openai.com/v1/chat/completions")
          (model "gpt-3.5-turbo")
          (url-request-method "POST")
@@ -112,7 +114,7 @@ Uses by default the writter role."
          'writter))
   (c3po-new-session)
   (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Query\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") input))
-  (c3po--add-message "system" (if (eq role 'dev) c3po--developer-role c3po--writter-role))
+  (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
   (c3po--add-message "user" input)
   (c3po-request-open-api input
                          role
