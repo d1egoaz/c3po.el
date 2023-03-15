@@ -115,6 +115,7 @@ Uses by default the writter role."
   (c3po-request-open-api input
                          role
                          (lambda (result &rest args)
+                           (c3po--add-message "assistant" result)
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
                            (pop-to-buffer c3po-buffer-name))))
 
@@ -184,6 +185,7 @@ Use the ROLE to tune the AI."
     (c3po-request-open-api input
                            c3po--last-role
                            (lambda (result &rest args)
+                             (c3po--add-message "assistant" result)
                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
                              (pop-to-buffer c3po-buffer-name)))))
 
