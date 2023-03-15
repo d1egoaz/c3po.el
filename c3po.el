@@ -32,8 +32,10 @@ Response MUST use full and well written markdown, code blocks must use the right
 your background is a Software Developer and Software Architect.
 Response MUST be concise.")
 
+(defvar c3po-buffer-name "*C-3PO - ChatGPT" "The name of the C-3PO buffer.")
+(defvar c3po-api-key nil "The API key for the OpenAI API.")
+
 (defvar c3po--last-role "Store the last used role. Used for session replies.")
-(defvar c3po-buffer-name "*C-3PO - ChatGPT")
 
 (defun c3po-request-open-api (input role callback &rest args)
   "Send an INPUT request to OpenAI API with ROLE, get result via CALLBACK.
@@ -43,7 +45,7 @@ Pass additional ARGS to the CALLBACK function."
          'writter
          (lambda (response) (message "🤖: %s" response))))
   (setq c3po--last-role role)
-  (let* ((api-key (diego/auth-source-get-password "api.openai.com" "apikey"))
+  (let* ((api-key c3po-api-key)
          (sys-content (if (eq role 'dev) c3po--developer-role c3po--writter-role))
          (url "https://api.openai.com/v1/chat/completions")
          (model "gpt-3.5-turbo")
