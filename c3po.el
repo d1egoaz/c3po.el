@@ -17,7 +17,7 @@
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the MIT License.
 ;;
-;;; Code:;
+;;; Code:
 
 (require 'url)
 (require 'json)
@@ -39,8 +39,8 @@ Response MUST be concise."
 
 (defvar c3po--last-role "Store the last used role. Used for session replies.")
 
-(defun c3po-request-open-api (input role callback &rest args)
-  "Send an INPUT request to OpenAI API with ROLE, get result via CALLBACK.
+(defun c3po-request-open-api (role callback &rest args)
+  "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
   (interactive
    (list (read-string "Enter your input: ")
@@ -88,8 +88,10 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
   "Rewrite the region BEG END and replace the selection with the result."
   (interactive "r")
   (let ((input (concat "Please rewrite the following text:\n" (buffer-substring-no-properties beg end))))
-    (c3po-request-open-api input
-                           'writter
+    (c3po-new-session)
+    (c3po--add-message "system" c3po-writter-role)
+    (c3po--add-message "user" input)
+    (c3po-request-open-api 'writter
                            (lambda (result &rest args)
                              (message "args: %S" args)
                              (let* ((arguments (car args))
@@ -116,18 +118,16 @@ Uses by default the writter role."
   (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Query\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") input))
   (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
   (c3po--add-message "user" input)
-  (c3po-request-open-api input
-                         role
+  (c3po-request-open-api role
                          (lambda (result &rest args)
                            (c3po--add-message "assistant" result)
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
                            (pop-to-buffer c3po-buffer-name))))
 
-(defun c3po-dev-query ()
-  "Interact with the ChatGPT API and display the response.  Using dev role."
-  (interactive)
-  (let ((input (read-string "Enter your input (dev role): ")))
-    (c3po-query input 'dev)))
+(defun c3po-dev-query (input)
+  "Interact INPUT with the ChatGPT API and display the response.  Using dev role."
+  (interactive "sEnter your input (dev role): ")
+  (c3po-query input 'dev))
 
 (defun c3po-summarize ()
   "Summarize the selected text or prompt for input and summarize."
@@ -148,7 +148,7 @@ Uses by default the writter role."
   "Execute selected text or prompt input with ACTION-QUERY, then execute ACTION.
 Use the ROLE to tune the AI."
   (let ((text (if (use-region-p)
-                  (buffer-substring (region-beginning) (region-end))
+                  (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string action-query))))
     (c3po-query (format "%s:\n%s" action text) role)))
 
@@ -156,7 +156,7 @@ Use the ROLE to tune the AI."
   "Explain the code for the selected text or prompt for input and explain."
   (interactive)
   (let ((text (if (use-region-p)
-                  (buffer-substring (region-beginning) (region-end))
+                  (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string "Enter code to explain: "))))
     (c3po-query (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
 
@@ -186,8 +186,7 @@ Use the ROLE to tune the AI."
   (let ((input (read-string "Enter your input: ")))
     (c3po--add-message "user" input)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" input))
-    (c3po-request-open-api input
-                           c3po--last-role
+    (c3po-request-open-api c3po--last-role
                            (lambda (result &rest args)
                              (c3po--add-message "assistant" result)
                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
