@@ -113,7 +113,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
                            beg
                            end)))
 
-(defun c3po-query (prompt role)
+(defun c3po-chat (prompt role)
   "Interact with the ChatGPT API with the PROMPT using the role ROLE.
 Uses by default the writter role."
   (interactive
@@ -129,10 +129,10 @@ Uses by default the writter role."
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
                            (pop-to-buffer c3po-buffer-name))))
 
-(defun c3po-dev-query (prompt)
+(defun c3po-dev-chat (prompt)
   "Interact PROMPT with the ChatGPT API and display the response.  Using dev role."
   (interactive "sEnter your prompt (dev role): ")
-  (c3po-query prompt 'dev))
+  (c3po-chat prompt 'dev))
 
 (defun c3po-summarize ()
   "Summarize the selected text or prompt for prompt and summarize."
@@ -160,7 +160,7 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string action-prompt))))
-    (c3po-query (format "%s:\n%s" action text) role)))
+    (c3po-chat (format "%s:\n%s" action text) role)))
 
 (defun c3po-explain-code ()
   "Explain the code for the selected text or prompt for prompt and explain."
@@ -168,7 +168,7 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string "Enter code to explain: "))))
-    (c3po-query (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
+    (c3po-chat (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
 
 (defun c3po--get-buffer-role-as-tag ()
   "Get buffer mode as a string to be used as a tag for a markdown code block."
