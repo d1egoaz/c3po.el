@@ -49,7 +49,7 @@ Response MUST be concise."
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
   (interactive
-   (list (read-string "Enter your input: ")
+   (list (read-string "Enter your prompt: ")
          'writter
          (lambda (response) (message "🤖: %s" response))))
   (setq c3po--last-role role)
@@ -92,10 +92,10 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
 (defun c3po-rewrite-replace (beg end)
   "Rewrite the region BEG END and replace the selection with the result."
   (interactive "r")
-  (let ((input (concat "Please rewrite the following text:\n" (buffer-substring-no-properties beg end))))
+  (let ((prompt (concat "Please rewrite the following text:\n" (buffer-substring-no-properties beg end))))
     (c3po-new-session)
     (c3po--add-message "system" c3po-writter-role)
-    (c3po--add-message "user" input)
+    (c3po--add-message "user" prompt)
     (c3po-request-open-api 'writter
                            (lambda (result &rest args)
                              (message "args: %S" args)
@@ -113,52 +113,57 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
                            beg
                            end)))
 
-(defun c3po-query (input role)
-  "Interact with the ChatGPT API with the INPUT using the role ROLE.
+(defun c3po-query (prompt role)
+  "Interact with the ChatGPT API with the PROMPT using the role ROLE.
 Uses by default the writter role."
   (interactive
-   (list (read-string "Enter your input: ")
+   (list (read-string "Enter your prompt: ")
          'writter))
   (c3po-new-session)
-  (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Query\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") input))
+  (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
   (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
-  (c3po--add-message "user" input)
+  (c3po--add-message "user" prompt)
   (c3po-request-open-api role
                          (lambda (result &rest _args)
                            (c3po--add-message "assistant" result)
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
                            (pop-to-buffer c3po-buffer-name))))
 
-(defun c3po-dev-query (input)
-  "Interact INPUT with the ChatGPT API and display the response.  Using dev role."
-  (interactive "sEnter your input (dev role): ")
-  (c3po-query input 'dev))
+(defun c3po-dev-query (prompt)
+  "Interact PROMPT with the ChatGPT API and display the response.  Using dev role."
+  (interactive "sEnter your prompt (dev role): ")
+  (c3po-query prompt 'dev))
 
 (defun c3po-summarize ()
-  "Summarize the selected text or prompt for input and summarize."
+  "Summarize the selected text or prompt for prompt and summarize."
   (interactive)
-  (c3po--action-on-text "Summarize the following text" "Enter text to summarize: " 'writter))
+  (c3po--action-on-text "tl;dr:" "Enter text to summarize: " 'writter))
 
 (defun c3po-rewrite ()
-  "Rewrite the selected text or prompt for input and rewrite."
+  "Rewrite the selected text or prompt for prompt and rewrite."
   (interactive)
-  (c3po--action-on-text "Rewrite the following text" "Enter text to rewrite: " 'writter))
+  (c3po--action-on-text "Rewrite the following text:" "Enter text to rewrite: " 'writter))
 
 (defun c3po-gen-test ()
   "Generate test for the passed text."
   (interactive)
   (c3po--action-on-text "Generate unit tests for the following code"  "Enter code to generate tests: " 'dev))
 
-(defun c3po--action-on-text (action action-query role)
-  "Execute selected text or prompt input with ACTION-QUERY, then execute ACTION.
-Use the ROLE to tune the AI."
+(defun c3po-correct-grammar ()
+  "Corrects sentences into standard English."
+  (interactive)
+  (c3po--action-on-text "Correct this to standard English:" "Enter text to correct: " 'writter))
+
+(defun c3po--action-on-text (action action-prompt role)
+  "Act on the selected text via the ACTION and ROLE.
+If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
-                (read-string action-query))))
+                (read-string action-prompt))))
     (c3po-query (format "%s:\n%s" action text) role)))
 
 (defun c3po-explain-code ()
-  "Explain the code for the selected text or prompt for input and explain."
+  "Explain the code for the selected text or prompt for prompt and explain."
   (interactive)
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
@@ -185,9 +190,9 @@ Use the ROLE to tune the AI."
 (defun c3po-reply ()
   "Reply with a message and submit the information."
   (interactive)
-  (let ((input (read-string "Enter your input: ")))
-    (c3po--add-message "user" input)
-    (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" input))
+  (let ((prompt (read-string "Enter your prompt: ")))
+    (c3po--add-message "user" prompt)
+    (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
     (c3po-request-open-api c3po--last-role
                            (lambda (result &rest _args)
                              (c3po--add-message "assistant" result)
