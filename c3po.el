@@ -23,6 +23,8 @@
 (require 'json)
 (require 'markdown-mode)
 
+(defvar url-http-end-of-headers) ;; later redefined by url-http
+
 (defvar c3po-developer-role "You are a large language model living inside Emacs, and the perfect programmer.
 Use a role of a Software Developer and Software Architect.
 Response MUST be concise.
@@ -40,6 +42,9 @@ Response MUST be concise."
 
 (defvar c3po--last-role "Store the last used role. Used for session replies.")
 
+(defvar c3po--session-messages '()
+  "List of messages with roles user and assistant for the current session.")
+
 (defun c3po-request-open-api (role callback &rest args)
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
@@ -49,7 +54,6 @@ Pass additional ARGS to the CALLBACK function."
          (lambda (response) (message "🤖: %s" response))))
   (setq c3po--last-role role)
   (let* ((api-key c3po-api-key)
-         (sys-content (if (eq role 'dev) c3po-developer-role c3po-writter-role))
          (url "https://api.openai.com/v1/chat/completions")
          (model "gpt-3.5-turbo")
          (url-request-method "POST")
@@ -120,7 +124,7 @@ Uses by default the writter role."
   (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
   (c3po--add-message "user" input)
   (c3po-request-open-api role
-                         (lambda (result &rest args)
+                         (lambda (result &rest _args)
                            (c3po--add-message "assistant" result)
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
                            (pop-to-buffer c3po-buffer-name))))
@@ -162,16 +166,13 @@ Use the ROLE to tune the AI."
     (c3po-query (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
 
 (defun c3po--get-buffer-role-as-tag ()
-  "Get the current buffer mode as a string to be used as a tag for a markdown code block."
+  "Get buffer mode as a string to be used as a tag for a markdown code block."
   (let ((str (replace-regexp-in-string "-mode$" "" (symbol-name major-mode)) ))
     (if (string-suffix-p "-ts" str) ;; for the new *-ts-modes
         (substring str 0 (- (length str) 3))
       str)))
 
 ;;; Session support
-
-(defvar c3po--session-messages '()
-  "List of messages with roles user and assistant for the current session.")
 
 (defun c3po--add-message (role content)
   "Add a message with given ROLE and CONTENT to the session message alist."
@@ -188,7 +189,7 @@ Use the ROLE to tune the AI."
     (c3po--add-message "user" input)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" input))
     (c3po-request-open-api c3po--last-role
-                           (lambda (result &rest args)
+                           (lambda (result &rest _args)
                              (c3po--add-message "assistant" result)
                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
                              (pop-to-buffer c3po-buffer-name)))))
