@@ -89,10 +89,9 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
         (insert (concat "\n" str))
         (goto-char (point-max))))))
 
-(defun c3po-rewrite-replace (beg end)
-  "Rewrite the region BEG END and replace the selection with the result."
-  (interactive "r")
-  (let ((prompt (concat "Please rewrite the following text:\n" (buffer-substring-no-properties beg end))))
+(defun c3po--replace-region-with (prompt beg end)
+  "Replace the region BEG END and replace the selection with the result of the PROMPT."
+  (let ((prompt (concat prompt "\n" (buffer-substring-no-properties beg end))))
     (c3po-new-session)
     (c3po--add-message "system" c3po-writter-role)
     (c3po--add-message "user" prompt)
@@ -101,17 +100,24 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
                              (message "args: %S" args)
                              (let* ((arguments (car args))
                                     (buf (nth 0 arguments)) ; gets buffer name
-                                    (beg (nth 1 arguments)) ; this is the bef passed as additional arg
-                                    (end (nth 2 arguments))
+                                    (beg (nth 1 arguments)) ; this is the beg passed as additional arg
+                                    (end (nth 2 arguments)) ; end
                                     )
                                (with-current-buffer buf
                                  (save-excursion
                                    (delete-region beg end)
                                    (goto-char beg)
                                    (insert result "\n")))))
-                           (buffer-name)
+                           (buffer-name) ; here is where the additional args are passed
                            beg
                            end)))
+
+(defun c3po-rewrite-and-replace (&optional beg end)
+  "Rewrite the region BEG END and replace the selection with the result."
+  (interactive "r")
+  (if (use-region-p)
+      (c3po--replace-region-with "Please rewrite the following text:" beg end)
+    (message "No region selected or region is empty")))
 
 (defun c3po-chat (prompt role)
   "Interact with the ChatGPT API with the PROMPT using the role ROLE.
@@ -153,6 +159,13 @@ Uses by default the writter role."
   "Corrects sentences into standard English."
   (interactive)
   (c3po--action-on-text "Correct this to standard English:" "Enter text to correct: " 'writter))
+
+(defun c3po-correct-grammar-and-replace (&optional beg end)
+  "Correct sentences into standard English.  Replace current region BEG END."
+  (interactive "r")
+  (if (use-region-p)
+      (c3po--replace-region-with "Please correct this to standard English:" beg end)
+    (message "No region selected or region is empty")))
 
 (defun c3po--action-on-text (action action-prompt role)
   "Act on the selected text via the ACTION and ROLE.
