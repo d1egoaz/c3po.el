@@ -36,7 +36,7 @@ your background is a Software Developer and Software Architect.
 Response MUST be concise."
   "Message for system setup of writter role.")
 
-(defvar c3po-buffer-name "*🤖C-3PO🤖*" "The name of the C-3PO buffer.")
+(defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
 
 (defvar c3po-api-key nil "The API key for the OpenAI API.")
 
