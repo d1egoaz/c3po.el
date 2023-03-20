@@ -22,6 +22,7 @@
 (require 'url)
 (require 'json)
 (require 'markdown-mode)
+(require 'diff-mode)
 
 (defvar url-http-end-of-headers) ;; later redefined by url-http
 
@@ -35,6 +36,9 @@ Response MUST use full and well written markdown, code blocks must use the right
 your background is a Software Developer and Software Architect.
 Response MUST be concise."
   "Message for system setup of writter role.")
+
+(defvar c3po-grammar-prompt "Please correct this to standard English, you must remove enclosing quotes from the response"
+  "Message for grammar prompt.")
 
 (defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
 
@@ -97,7 +101,6 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (c3po--add-message "user" prompt)
     (c3po-request-open-api 'writter
                            (lambda (result &rest args)
-                             (message "args: %S" args)
                              (let* ((arguments (car args))
                                     (buf (nth 0 arguments)) ; gets buffer name
                                     (beg (nth 1 arguments)) ; this is the beg passed as additional arg
@@ -143,28 +146,61 @@ Uses by default the writter role."
 (defun c3po-summarize ()
   "Summarize the selected text or prompt for prompt and summarize."
   (interactive)
-  (c3po--action-on-text "tl;dr:" "Enter text to summarize: " 'writter))
+  (c3po--action-on-text "tl;dr" "Enter text to summarize: " 'writter))
 
 (defun c3po-rewrite ()
   "Rewrite the selected text or prompt for prompt and rewrite."
   (interactive)
-  (c3po--action-on-text "Rewrite the following text:" "Enter text to rewrite: " 'writter))
+  (c3po--action-on-text "Rewrite the following text" "Enter text to rewrite: " 'writter))
 
 (defun c3po-gen-test ()
   "Generate test for the passed text."
   (interactive)
   (c3po--action-on-text "Generate unit tests for the following code"  "Enter code to generate tests: " 'dev))
 
-(defun c3po-correct-grammar ()
-  "Corrects sentences into standard English."
-  (interactive)
-  (c3po--action-on-text "Correct this to standard English:" "Enter text to correct: " 'writter))
+(defun c3po-correct-grammar (text)
+  "Corrects TEXT into standard English."
+  (interactive "sEnter text to correct: ")
+  (let ((prompt (concat c3po-grammar-prompt ":\n" text)))
+    (c3po-new-session)
+    (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
+    (c3po--add-message "system" c3po-writter-role)
+    (c3po--add-message "user" prompt)
+    (c3po-request-open-api 'writter
+                           (lambda (result &rest _args)
+                             (c3po--add-message "assistant" result)
+                             (c3po-append-result (format "### 🤖 Response\n%s\n" result))
+                             (c3po--diff-strings text result)
+                             (pop-to-buffer c3po-buffer-name)
+                             (pop-to-buffer "*Diff*")))))
+
+(defun c3po--diff-strings (str1 str2)
+  "Compare two strings (STR1 and STR2) and return the result."
+  (let ((buf1 (generate-new-buffer " *c3po-diff-str1*"))
+        (buf2 (generate-new-buffer " *c3po-diff-str2*"))
+        (diff-output))
+    (with-current-buffer buf1
+      (insert str1))
+    (with-current-buffer buf2
+      (insert str2))
+    ;; Perform the diff and store it in a new buffer
+    (with-temp-buffer
+      (diff buf1 buf2 "-U0") ; -U0: Unidiff with 0 lines of context
+      (diff-mode)
+      (diff-refine-hunk)) ; to highlight single character changes
+    ;; not interested for now, as I can use the diff buffer to show diffs
+    ;; additional (buffer-string) is only returning the first line :/
+    ;; (with-current-buffer "*Diff*"
+    ;;   (setq diff-output (buffer-string)))
+    (kill-buffer buf1)
+    (kill-buffer buf2)
+    diff-output))
 
 (defun c3po-correct-grammar-and-replace (&optional beg end)
   "Correct sentences into standard English.  Replace current region BEG END."
   (interactive "r")
   (if (use-region-p)
-      (c3po--replace-region-with "Please correct this to standard English:" beg end)
+      (c3po--replace-region-with (concat c3po-grammar-prompt ":") beg end)
     (message "No region selected or region is empty")))
 
 (defun c3po--action-on-text (action action-prompt role)
