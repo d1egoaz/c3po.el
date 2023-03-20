@@ -49,7 +49,7 @@ Response MUST be concise."
 (defvar c3po--session-messages '()
   "List of messages with roles user and assistant for the current session.")
 
-(defun c3po-request-open-api (role callback &rest args)
+(defun c3po--request-open-api (role callback &rest args)
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
   (interactive
@@ -99,7 +99,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (c3po-new-session)
     (c3po--add-message "system" c3po-writter-role)
     (c3po--add-message "user" prompt)
-    (c3po-request-open-api 'writter
+    (c3po--request-open-api 'writter
                            (lambda (result &rest args)
                              (let* ((arguments (car args))
                                     (buf (nth 0 arguments)) ; gets buffer name
@@ -132,7 +132,7 @@ Uses by default the writter role."
   (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
   (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
   (c3po--add-message "user" prompt)
-  (c3po-request-open-api role
+  (c3po--request-open-api role
                          (lambda (result &rest _args)
                            (c3po--add-message "assistant" result)
                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
@@ -166,7 +166,7 @@ Uses by default the writter role."
     (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
     (c3po--add-message "system" c3po-writter-role)
     (c3po--add-message "user" prompt)
-    (c3po-request-open-api 'writter
+    (c3po--request-open-api 'writter
                            (lambda (result &rest _args)
                              (c3po--add-message "assistant" result)
                              (c3po-append-result (format "### 🤖 Response\n%s\n" result))
@@ -242,7 +242,7 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((prompt (read-string "Enter your prompt: ")))
     (c3po--add-message "user" prompt)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
-    (c3po-request-open-api c3po--last-role
+    (c3po--request-open-api c3po--last-role
                            (lambda (result &rest _args)
                              (c3po--add-message "assistant" result)
                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
