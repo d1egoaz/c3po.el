@@ -26,28 +26,33 @@
 
 (defvar url-http-end-of-headers) ;; later redefined by url-http
 
+
+(defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
+
+(defvar c3po-api-key nil "The API key for the OpenAI API.")
+
+(defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Conversation API.")
+
 (defvar c3po-developer-role "You are a large language model living inside Emacs, and the perfect programmer.
 Use a role of a Software Developer and Software Architect.
 Response MUST be concise.
 Response MUST use full and well written markdown, code blocks must use the right language tag."
   "Message for system setup of developer role.")
 
-(defvar c3po-writter-role "You are a large language model living inside Emacs, and the perfect writing assistance,
-your background is a Software Developer and Software Architect.
+(defvar c3po-writter-role "You are a large language model living inside Emacs, and the perfect writing assistance.
+Your background is a Software Developer and Software Architect.
 Response MUST be concise."
   "Message for system setup of writter role.")
 
-(defvar c3po-grammar-prompt "Please correct this to standard English, you must remove enclosing quotes from the response"
+(defvar c3po-grammar-prompt "Please correct this to standard English.
+The initial and end double quotes MUST be removed from the response.
+Please respond only with the corrected sentences."
   "Message for grammar prompt.")
-
-(defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
-
-(defvar c3po-api-key nil "The API key for the OpenAI API.")
 
 (defvar c3po--last-role "Store the last used role. Used for session replies.")
 
 (defvar c3po--session-messages '()
-  "List of messages with roles user and assistant for the current session.")
+  "List of messages with roles user and assistant for the current session/conversation.")
 
 (defun c3po--request-open-api (role callback &rest args)
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
@@ -59,14 +64,13 @@ Pass additional ARGS to the CALLBACK function."
   (setq c3po--last-role role)
   (let* ((api-key c3po-api-key)
          (url "https://api.openai.com/v1/chat/completions")
-         (model "gpt-3.5-turbo")
+         (model c3po-model)
          (url-request-method "POST")
          (url-request-extra-headers `(("Content-Type" . "application/json")
                                       ("Authorization" . ,(format "Bearer %s" api-key))))
-         ;; needed to use us-ascii, instead of utf-8 due to a multibyte text issue
          (url-request-data (encode-coding-string
                             (json-encode `(:model ,model :messages ,c3po--session-messages))
-                            'us-ascii)))
+                            'utf-8)))
     (url-retrieve url
                   #'c3po--extract-content-response
                   (list callback args))))
@@ -100,20 +104,20 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (c3po--add-message "system" c3po-writter-role)
     (c3po--add-message "user" prompt)
     (c3po--request-open-api 'writter
-                           (lambda (result &rest args)
-                             (let* ((arguments (car args))
-                                    (buf (nth 0 arguments)) ; gets buffer name
-                                    (beg (nth 1 arguments)) ; this is the beg passed as additional arg
-                                    (end (nth 2 arguments)) ; end
-                                    )
-                               (with-current-buffer buf
-                                 (save-excursion
-                                   (delete-region beg end)
-                                   (goto-char beg)
-                                   (insert result "\n")))))
-                           (buffer-name) ; here is where the additional args are passed
-                           beg
-                           end)))
+                            (lambda (result &rest args)
+                              (let* ((arguments (car args))
+                                     (buf (nth 0 arguments)) ; gets buffer name
+                                     (beg (nth 1 arguments)) ; this is the beg passed as additional arg
+                                     (end (nth 2 arguments)) ; end
+                                     )
+                                (with-current-buffer buf
+                                  (save-excursion
+                                    (delete-region beg end)
+                                    (goto-char beg)
+                                    (insert result "\n")))))
+                            (buffer-name) ; here is where the additional args are passed
+                            beg
+                            end)))
 
 (defun c3po-rewrite-and-replace (&optional beg end)
   "Rewrite the region BEG END and replace the selection with the result."
@@ -133,10 +137,10 @@ Uses by default the writter role."
   (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
   (c3po--add-message "user" prompt)
   (c3po--request-open-api role
-                         (lambda (result &rest _args)
-                           (c3po--add-message "assistant" result)
-                           (c3po-append-result (format "### 🤖 Response\n%s\n" result))
-                           (pop-to-buffer c3po-buffer-name))))
+                          (lambda (result &rest _args)
+                            (c3po--add-message "assistant" result)
+                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
+                            (pop-to-buffer c3po-buffer-name))))
 
 (defun c3po-dev-chat (prompt)
   "Interact PROMPT with the ChatGPT API and display the response.  Using dev role."
@@ -167,12 +171,12 @@ Uses by default the writter role."
     (c3po--add-message "system" c3po-writter-role)
     (c3po--add-message "user" prompt)
     (c3po--request-open-api 'writter
-                           (lambda (result &rest _args)
-                             (c3po--add-message "assistant" result)
-                             (c3po-append-result (format "### 🤖 Response\n%s\n" result))
-                             (c3po--diff-strings text result)
-                             (pop-to-buffer c3po-buffer-name)
-                             (pop-to-buffer "*Diff*")))))
+                            (lambda (result &rest _args)
+                              (c3po--add-message "assistant" result)
+                              (c3po-append-result (format "### 🤖 Response\n%s\n" result))
+                              (c3po--diff-strings text result)
+                              (pop-to-buffer c3po-buffer-name)
+                              (pop-to-buffer "*Diff*")))))
 
 (defun c3po--diff-strings (str1 str2)
   "Compare two strings (STR1 and STR2) and return the result."
@@ -243,10 +247,10 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
     (c3po--add-message "user" prompt)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
     (c3po--request-open-api c3po--last-role
-                           (lambda (result &rest _args)
-                             (c3po--add-message "assistant" result)
-                             (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
-                             (pop-to-buffer c3po-buffer-name)))))
+                            (lambda (result &rest _args)
+                              (c3po--add-message "assistant" result)
+                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
+                              (pop-to-buffer c3po-buffer-name)))))
 
 (provide 'c3po)
 ;;; c3po.el ends here
