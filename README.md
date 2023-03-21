@@ -12,6 +12,7 @@ LOL, Obviously, above was written by ChatGPT.
 This is my first package, it's what I've been using daily. I just wanted to share my workflow and improve my Emacs Lisp skills.
 
 ## Some Details
+- ChatGPT API is called using only emacs built-in packages. I'm using Emacs 30+.
 - Except for the region replacement commands, all prompts and responses are displayed in the C3PO buffer.
 - Commands without a specified region will prompt the user for input.
 - All commands support a conversation style, so you can reply with additional prompts.
