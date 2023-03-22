@@ -1,6 +1,6 @@
 # c3p0.el
 
-<img src="./c3p-o.png" height="30%" width="30%">
+<img height="30%" width="30%" alt="image" src="https://user-images.githubusercontent.com/950087/227041493-3828c13c-a403-407d-bdcc-75c1644274c5.png">
 
 🤖 Meet c3po.el, the #Emacs droid you’ve been looking for!
 
