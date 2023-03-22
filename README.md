@@ -2,14 +2,15 @@
 
 <img src="./c3p-o.png" height="30%" width="30%">
 
-**C3PO.el** is an Emacs package for interacting with the ChatGPT API. This package is named after the
-famous protocol droid from Star Wars, who was known for his ability to communicate and translate
-languages. Similarly, C3PO.el provides an AI-powered chatbot interface that allows users to interact
-with the ChatGPT API through Emacs.
+🤖 Meet c3po.el, the #Emacs droid you’ve been looking for!
 
-LOL, Obviously, above was written by ChatGPT.
+This package will take your workflow to a galaxy far, far away. 🌟
 
-This is my first package, it's what I've been using daily. I just wanted to share my workflow and improve my Emacs Lisp skills.
+🚀 Unleash the power of the Force using ChatGPT inside Emacs.
+
+**May the source be with you!**
+
+_This is my first package, it's what I've been using daily. I just wanted to share my workflow and improve my Emacs Lisp skills._
 
 ## Some Details
 - ChatGPT API is called using only emacs built-in packages. I'm using Emacs 30+.
