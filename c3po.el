@@ -68,9 +68,10 @@ Pass additional ARGS to the CALLBACK function."
          (url-request-method "POST")
          (url-request-extra-headers `(("Content-Type" . "application/json")
                                       ("Authorization" . ,(format "Bearer %s" api-key))))
+         ;; needed to use us-ascii, instead of utf-8 due to a multibyte text issue
          (url-request-data (encode-coding-string
                             (json-encode `(:model ,model :messages ,c3po--session-messages))
-                            'utf-8)))
+                            'us-ascii)))
     (url-retrieve url
                   #'c3po--extract-content-response
                   (list callback args))))
@@ -80,7 +81,8 @@ Pass additional ARGS to the CALLBACK function."
 Call user's CALLBACK with the result and passes the aditional ARGS."
   ;; url-http sets a marker named url-http-end-of-headers after retrieving the web content, allowing
   ;; us to skip the HTTP headers directly using this marker:
-  (let* ((json-string (buffer-substring-no-properties (1+ url-http-end-of-headers) (point-max)))
+  (let* ((data (buffer-substring-no-properties (1+ url-http-end-of-headers) (point-max)))
+         (json-string (decode-coding-string data 'utf-8))
          (json-object (json-read-from-string json-string))
          (message-content (aref (cdr (assoc 'choices json-object)) 0))
          (content (cdr (assoc 'content (cdr (assoc 'message message-content))))))
