@@ -49,7 +49,7 @@ Contractions are permited.
 Please respond only with the corrected sentences."
   "Message for grammar prompt.")
 
-(defvar c3po--last-role "Store the last used role. Used for session replies.")
+(defvar c3po--last-role nil "Store the last used role.  Used for session replies.")
 
 (defvar c3po-command-history nil
   "History of commands for C3PO.")
