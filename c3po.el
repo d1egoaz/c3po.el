@@ -32,21 +32,22 @@
 
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Conversation API.")
 
-(defvar c3po-developer-role "You are a large language model living inside Emacs, and the perfect programmer.
-Use a role of a Software Developer and Software Architect.
-Response MUST be concise.
-Response MUST use full and well written markdown, code blocks must use the right language tag."
+(defvar c3po-developer-role "You are an expert programmer.
+Your answers MUST be concise.
+Your answers MUST be in full and well written markdown, code blocks must use the correct language tag."
   "Message for system setup of developer role.")
 
-(defvar c3po-writter-role "You are a large language model living inside Emacs, and the perfect writing assistance.
-Your background is a Software Developer and Software Architect.
-Response MUST be concise."
-  "Message for system setup of writter role.")
+(defvar c3po-writter-role "I want you to act as my writing assistance with an expert programmer background.
+I will speak to you in any language, and you will detect the language and answer with a enhanced version of my text.
+Keep the meaning the same, but be concise. Contractions are permitted in the text. Avoid too much passive voice.
+I want you to reply only with the improved text and nothing else, do not write explanations.
+Answer MUST be concise.\n"
+  "Message for system setup of writer role.")
 
-(defvar c3po-grammar-prompt "Please correct this to standard English.
-The initial and end double quotes MUST be removed from the response.
-Contractions are permited.
-Please respond only with the corrected sentences."
+(defvar c3po-grammar-prompt "I want you to act as my grammar assistance.
+I will speak to you in any language, and you will detect the language and answer with the corrected and improved grammar version of my text.
+Contractions are permitted in the text. Avoid too much passive voice.
+I want you to reply only with the correction, improvements, and nothing else, do not write explanations.\n"
   "Message for grammar prompt.")
 
 (defvar c3po--last-role nil "Store the last used role.  Used for session replies.")
