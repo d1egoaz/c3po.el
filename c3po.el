@@ -26,7 +26,6 @@
 
 (defvar url-http-end-of-headers) ;; later redefined by url-http
 
-
 (defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
 
 (defvar c3po-api-key nil "The API key for the OpenAI API.")
@@ -46,6 +45,7 @@ Response MUST be concise."
 
 (defvar c3po-grammar-prompt "Please correct this to standard English.
 The initial and end double quotes MUST be removed from the response.
+Contractions are permited.
 Please respond only with the corrected sentences."
   "Message for grammar prompt.")
 
@@ -62,19 +62,22 @@ Pass additional ARGS to the CALLBACK function."
          'writter
          (lambda (response) (message "🤖: %s" response))))
   (setq c3po--last-role role)
-  (let* ((api-key c3po-api-key)
-         (url "https://api.openai.com/v1/chat/completions")
-         (model c3po-model)
-         (url-request-method "POST")
-         (url-request-extra-headers `(("Content-Type" . "application/json")
-                                      ("Authorization" . ,(format "Bearer %s" api-key))))
-         ;; needed to use us-ascii, instead of utf-8 due to a multibyte text issue
-         (url-request-data (encode-coding-string
-                            (json-encode `(:model ,model :messages ,c3po--session-messages))
-                            'us-ascii)))
-    (url-retrieve url
-                  #'c3po--extract-content-response
-                  (list callback args))))
+
+  (if (not c3po-api-key)
+      (message "Please provide an OpenAI API key first.")
+    (let* ((api-key c3po-api-key)
+           (url "https://api.openai.com/v1/chat/completions")
+           (model c3po-model)
+           (url-mime-charset-string "utf-8") ;; set request/response encoding
+           (url-request-method "POST")
+           (url-request-extra-headers `(("Content-Type" . "application/json")
+                                        ("Authorization" . ,(format "Bearer %s" api-key))))
+           (url-request-data (encode-coding-string
+                              (json-encode `(:model ,model :messages ,c3po--session-messages))
+                              'utf-8)))
+      (url-retrieve url
+                    #'c3po--extract-content-response
+                    (list callback args)))))
 
 (defun c3po--extract-content-response (_status callback &rest args)
   "Extract the last lines of a JSON string from a buffer.
@@ -184,7 +187,7 @@ Uses by default the writter role."
   "Compare two strings (STR1 and STR2) and return the result."
   (let ((buf1 (generate-new-buffer " *c3po-diff-str1*"))
         (buf2 (generate-new-buffer " *c3po-diff-str2*"))
-        (diff-output))
+        (diff-output nil))
     (with-current-buffer buf1
       (insert str1))
     (with-current-buffer buf2
