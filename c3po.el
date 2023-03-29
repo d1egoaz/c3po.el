@@ -62,12 +62,11 @@ Pass additional ARGS to the CALLBACK function."
 
   (if (not c3po-api-key)
       (message "Please provide an OpenAI API key first.")
-    (let* ((api-key (encode-coding-string c3po-api-key 'utf-8))
+    (let* ((api-key c3po-api-key)
            (url "https://api.openai.com/v1/chat/completions")
            (model c3po-model)
-           (url-mime-charset-string "utf-8") ;; set request/response encoding
-           (url-request-method (encode-coding-string "POST" 'utf-8))
-           (url-request-extra-headers `(("Content-Type" . ,(encode-coding-string "application/json" 'utf-8))
+           (url-request-method "POST")
+           (url-request-extra-headers `(("Content-Type" . "application/json")
                                         ("Authorization" . ,(encode-coding-string(format "Bearer %s" api-key) 'utf-8))))
            (url-request-data (encode-coding-string
                               (json-encode `(:model ,model :messages ,c3po--session-messages))
