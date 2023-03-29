@@ -57,10 +57,7 @@ Please respond only with the corrected sentences."
 (defun c3po--request-open-api (role callback &rest args)
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
-  (interactive
-   (list (read-string "Enter your prompt: ")
-         'writter
-         (lambda (response) (message "🤖: %s" response))))
+  (interactive)
   (setq c3po--last-role role)
 
   (if (not c3po-api-key)
