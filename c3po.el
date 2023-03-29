@@ -51,8 +51,11 @@ Please respond only with the corrected sentences."
 
 (defvar c3po--last-role "Store the last used role. Used for session replies.")
 
+(defvar c3po-command-history nil
+  "History of commands for C3PO.")
+
 (defvar c3po--session-messages '()
-  "List of messages with roles user and assistant for the current session/conversation.")
+  "List of messages with roles user and assistant for the current session.")
 
 (defun c3po--request-open-api (role callback &rest args)
   "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
@@ -72,10 +75,10 @@ Pass additional ARGS to the CALLBACK function."
                               (json-encode `(:model ,model :messages ,c3po--session-messages))
                               'utf-8)))
       (url-retrieve url
-                    #'c3po--extract-content-response
+                    #'c3po--extract-content-answer
                     (list callback args)))))
 
-(defun c3po--extract-content-response (_status callback &rest args)
+(defun c3po--extract-content-answer (_status callback &rest args)
   "Extract the last lines of a JSON string from a buffer.
 Call user's CALLBACK with the result and passes the aditional ARGS."
   ;; url-http sets a marker named url-http-end-of-headers after retrieving the web content, allowing
@@ -99,7 +102,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
         (goto-char (point-max))))))
 
 (defun c3po--replace-region-with (prompt beg end)
-  "Replace the region BEG END and replace the selection with the result of the PROMPT."
+  "Replace the region BEG END and replace it with the result of the PROMPT."
   (let ((prompt (concat prompt "\n" (buffer-substring-no-properties beg end))))
     (c3po-new-session)
     (c3po--add-message "system" c3po-writter-role)
@@ -131,7 +134,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
   "Interact with the ChatGPT API with the PROMPT using the role ROLE.
 Uses by default the writter role."
   (interactive
-   (list (read-string "Enter your prompt: ")
+   (list (read-string "Enter your prompt: " nil 'c3po-command-history)
          'writter))
   (c3po-new-session)
   (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
@@ -140,12 +143,13 @@ Uses by default the writter role."
   (c3po--request-open-api role
                           (lambda (result &rest _args)
                             (c3po--add-message "assistant" result)
-                            (c3po-append-result (format "### 🤖 Response\n%s\n" result))
+                            (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
                             (pop-to-buffer c3po-buffer-name))))
 
 (defun c3po-dev-chat (prompt)
-  "Interact PROMPT with the ChatGPT API and display the response.  Using dev role."
-  (interactive "sEnter your prompt (dev role): ")
+  "Interact PROMPT with the ChatGPT API and display the answer.  Using dev role."
+  (interactive
+   (list (read-string "Enter your prompt (dev role): " nil 'c3po-command-history)))
   (c3po-chat prompt 'dev))
 
 (defun c3po-summarize ()
@@ -165,7 +169,8 @@ Uses by default the writter role."
 
 (defun c3po-correct-grammar (text)
   "Corrects TEXT into standard English."
-  (interactive "sEnter text to correct: ")
+  (interactive
+   (list (read-string "Enter text to fix grammar: " nil 'c3po-command-history)))
   (let ((prompt (concat c3po-grammar-prompt ":\n" text)))
     (c3po-new-session)
     (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
@@ -174,7 +179,7 @@ Uses by default the writter role."
     (c3po--request-open-api 'writter
                             (lambda (result &rest _args)
                               (c3po--add-message "assistant" result)
-                              (c3po-append-result (format "### 🤖 Response\n%s\n" result))
+                              (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
                               (c3po--diff-strings text result)
                               (pop-to-buffer c3po-buffer-name)
                               (pop-to-buffer "*Diff*")))))
@@ -213,7 +218,7 @@ Uses by default the writter role."
 If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
-                (read-string action-prompt))))
+                (read-string action-prompt nil 'c3po-command-history))))
     (c3po-chat (format "%s:\n%s" action text) role)))
 
 (defun c3po-explain-code ()
@@ -221,7 +226,7 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (interactive)
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
-                (read-string "Enter code to explain: "))))
+                (read-string "Enter code to explain: " nil 'c3po-command-history))))
     (c3po-chat (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
 
 (defun c3po--get-buffer-role-as-tag ()
@@ -244,13 +249,13 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
 (defun c3po-reply ()
   "Reply with a message and submit the information."
   (interactive)
-  (let ((prompt (read-string "Enter your prompt: ")))
+  (let ((prompt (read-string "Enter your reply prompt: " nil 'c3po-command-history)))
     (c3po--add-message "user" prompt)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
     (c3po--request-open-api c3po--last-role
                             (lambda (result &rest _args)
                               (c3po--add-message "assistant" result)
-                              (c3po-append-result (format "##### 🤖 Response\n%s\n" result))
+                              (c3po-append-result (format "##### 🤖 Answer\n%s\n" result))
                               (pop-to-buffer c3po-buffer-name)))))
 
 (provide 'c3po)
