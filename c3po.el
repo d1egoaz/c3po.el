@@ -24,46 +24,47 @@
 (require 'markdown-mode)
 (require 'diff-mode)
 
-(defvar url-http-end-of-headers) ;; later redefined by url-http
+;; It should be later redefined by url-http, otherwise we will get a warning compilation message.
+(defvar url-http-end-of-headers)
 
-(defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
 
 (defvar c3po-api-key nil "The API key for the OpenAI API.")
 
+(defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
+
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Conversation API.")
 
-(defvar c3po-developer-role "You are an expert programmer.
-Your answers MUST be concise.
-Your answers MUST be in full and well written markdown, code blocks must use the correct language tag."
-  "Message for system setup of developer role.")
+(defvar c3po-system-persona-prompts-dict
+  '((developer . "You're a programming expert.
+Your responses should be brief and written in proper markdown format with accurate language tags for code blocks.")
+    (writer . "Please act as my writing assistant with a programming expertise.
+Keep it concise")
+    (rewriter . "Please act as my writing assistant with a programming expertise.
+I will speak to you in any language and you can enhance my text accordingly.
+Maintain the meaning, use contractions, and avoid passive voice.
+Your response should only include the improved text, without explanations.
+Keep it concise.")
+    (corrector . "Persona instructions: Please act as my grammar assistant.
+I will communicate with you in any language and you will correct and enhance the grammar in my text.
+You may use contractions and avoid passive voice.
+I want you to only reply with the correction and nothing else.")
+    (summarizer . "Please act as my writing assistant with a programming expertise. tl;dr"))
+  "Dictionary of known system prompts.")
 
-(defvar c3po-writter-role "I want you to act as my writing assistance with an expert programmer background.
-I will speak to you in any language, and you will detect the language and answer with a enhanced version of my text.
-Keep the meaning the same, but be concise. Contractions are permitted in the text. Avoid too much passive voice.
-I want you to reply only with the improved text and nothing else, do not write explanations.
-Answer MUST be concise.\n"
-  "Message for system setup of writer role.")
-
-(defvar c3po-grammar-prompt "I want you to act as my grammar assistance.
-I will speak to you in any language, and you will detect the language and answer with the corrected and improved grammar version of my text.
-Contractions are permitted in the text. Avoid too much passive voice.
-I want you to reply only with the correction, improvements, and nothing else, do not write explanations.\n"
-  "Message for grammar prompt.")
-
-(defvar c3po--last-role nil "Store the last used role.  Used for session replies.")
+(defun c3po--persona-prompt-from-key (key)
+  "Return the prompt associated with the persona given the KEY."
+  (cdr (assoc key c3po-system-persona-prompts-dict)))
 
 (defvar c3po-command-history nil
   "History of commands for C3PO.")
 
 (defvar c3po--session-messages '()
-  "List of messages with roles user and assistant for the current session.")
+  "List of messages with personas user and assistant for the current session.")
 
-(defun c3po--request-open-api (role callback &rest args)
-  "Send session messages request to OpenAI API with ROLE, get result via CALLBACK.
+(defun c3po--request-open-api (callback &rest args)
+  "Send session messages request to OpenAI API, get result via CALLBACK.
 Pass additional ARGS to the CALLBACK function."
   (interactive)
-  (setq c3po--last-role role)
-
   (if (not c3po-api-key)
       (message "Please provide an OpenAI API key first.")
     (let* ((api-key c3po-api-key)
@@ -102,14 +103,13 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
         (insert (concat "\n" str))
         (goto-char (point-max))))))
 
-(defun c3po--replace-region-with (prompt beg end)
+(defun c3po--replace-region-with (persona beg end)
   "Replace the region BEG END and replace it with the result of the PROMPT."
-  (let ((prompt (concat prompt "\n" (buffer-substring-no-properties beg end))))
+  (let ((text (concat "\n" (buffer-substring-no-properties beg end))))
     (c3po-new-session)
-    (c3po--add-message "system" c3po-writter-role)
-    (c3po--add-message "user" prompt)
-    (c3po--request-open-api 'writter
-                            (lambda (result &rest args)
+    (c3po--add-message "system" (c3po--persona-prompt-from-key persona))
+    (c3po--add-message "user" text)
+    (c3po--request-open-api (lambda (result &rest args)
                               (let* ((arguments (car args))
                                      (buf (nth 0 arguments)) ; gets buffer name
                                      (beg (nth 1 arguments)) ; this is the beg passed as additional arg
@@ -128,61 +128,59 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
   "Rewrite the region BEG END and replace the selection with the result."
   (interactive "r")
   (if (use-region-p)
-      (c3po--replace-region-with "Please rewrite the following text:" beg end)
+      (c3po--replace-region-with 'rewriter beg end)
     (message "No region selected or region is empty")))
 
-(defun c3po-chat (prompt role)
-  "Interact with the ChatGPT API with the PROMPT using the role ROLE.
-Uses by default the writter role."
+(defun c3po-chat (persona prompt)
+  "Interact with the ChatGPT API with the PROMPT using the persona PERSONA.
+Uses by default the writer persona."
   (interactive
-   (list (read-string "Enter your prompt: " nil 'c3po-command-history)
-         'writter))
+   (list 'writer
+         (read-string "Enter your prompt: " nil 'c3po-command-history)))
   (c3po-new-session)
-  (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
-  (c3po--add-message "system" (if (eq role 'dev) c3po-developer-role c3po-writter-role))
+  (c3po-append-result (format "\n# New Session (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" persona (format-time-string "%A, %e %B %Y %T %Z") prompt))
+  (c3po--add-message "system" (c3po--persona-prompt-from-key persona))
   (c3po--add-message "user" prompt)
-  (c3po--request-open-api role
-                          (lambda (result &rest _args)
+  (c3po--request-open-api (lambda (result &rest _args)
                             (c3po--add-message "assistant" result)
                             (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
-                            (pop-to-buffer c3po-buffer-name))))
+                            (pop-to-buffer c3po-buffer-name)
+                            (goto-char (point-max))
+                            (recenter))))
 
 (defun c3po-dev-chat (prompt)
-  "Interact PROMPT with the ChatGPT API and display the answer.  Using dev role."
+  "Interact with PROMPT with the ChatGPT API and display the answer."
   (interactive
-   (list (read-string "Enter your prompt (dev role): " nil 'c3po-command-history)))
-  (c3po-chat prompt 'dev))
+   (list (read-string "Enter your prompt (developer persona): " nil 'c3po-command-history)))
+  (c3po-chat 'developer prompt))
 
 (defun c3po-summarize ()
   "Summarize the selected text or prompt for prompt and summarize."
   (interactive)
-  (c3po--action-on-text "tl;dr" "Enter text to summarize: " 'writter))
+  (c3po--action-on-text 'summarizer "Enter text to summarize: "))
 
 (defun c3po-rewrite ()
-  "Rewrite the selected text or prompt for prompt and rewrite."
+  "Rewrite the selected text or ask for a prompt before rewriting it."
   (interactive)
-  (c3po--action-on-text "Rewrite the following text" "Enter text to rewrite: " 'writter))
+  (c3po--action-on-text 'rewriter "Enter text to rewrite: "))
 
-(defun c3po-gen-test ()
-  "Generate test for the passed text."
+(defun c3po-correct-grammar ()
+  "Correct text in the input language."
   (interactive)
-  (c3po--action-on-text "Generate unit tests for the following code"  "Enter code to generate tests: " 'dev))
-
-(defun c3po-correct-grammar (text)
-  "Corrects TEXT into standard English."
-  (interactive
-   (list (read-string "Enter text to fix grammar: " nil 'c3po-command-history)))
-  (let ((prompt (concat c3po-grammar-prompt ":\n" text)))
+  (let ((text (if (use-region-p)
+                  (buffer-substring-no-properties (region-beginning) (region-end))
+                (read-string "Enter text to fix grammar: " nil 'c3po-command-history))))
     (c3po-new-session)
-    (c3po-append-result (format "\n# New Session - %s\n## 🙋‍♂️ Prompt\n%s\n" (format-time-string "%A, %e %B %Y %T %Z") prompt))
-    (c3po--add-message "system" c3po-writter-role)
-    (c3po--add-message "user" prompt)
-    (c3po--request-open-api 'writter
-                            (lambda (result &rest _args)
+    (c3po-append-result (format "\n# New Session (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" 'corrector (format-time-string "%A, %e %B %Y %T %Z") text))
+    (c3po--add-message "system" (c3po--persona-prompt-from-key 'corrector))
+    (c3po--add-message "user" text)
+    (c3po--request-open-api (lambda (result &rest _args)
                               (c3po--add-message "assistant" result)
                               (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
                               (c3po--diff-strings text result)
                               (pop-to-buffer c3po-buffer-name)
+                              (goto-char (point-max))
+                              (recenter)
                               (pop-to-buffer "*Diff*")))))
 
 (defun c3po--diff-strings (str1 str2)
@@ -211,16 +209,16 @@ Uses by default the writter role."
   "Correct sentences into standard English.  Replace current region BEG END."
   (interactive "r")
   (if (use-region-p)
-      (c3po--replace-region-with (concat c3po-grammar-prompt ":") beg end)
+      (c3po--replace-region-with 'corrector beg end)
     (message "No region selected or region is empty")))
 
-(defun c3po--action-on-text (action action-prompt role)
-  "Act on the selected text via the ACTION and ROLE.
+(defun c3po--action-on-text (persona action-prompt)
+  "Act on the selected text via the ACTION and PERSONA.
 If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string action-prompt nil 'c3po-command-history))))
-    (c3po-chat (format "%s:\n%s" action text) role)))
+    (c3po-chat persona text)))
 
 (defun c3po-explain-code ()
   "Explain the code for the selected text or prompt for prompt and explain."
@@ -228,9 +226,9 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((text (if (use-region-p)
                   (buffer-substring-no-properties (region-beginning) (region-end))
                 (read-string "Enter code to explain: " nil 'c3po-command-history))))
-    (c3po-chat (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-role-as-tag) text) 'dev)))
+    (c3po-chat 'developer (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) text))))
 
-(defun c3po--get-buffer-role-as-tag ()
+(defun c3po--get-buffer-mode-as-tag ()
   "Get buffer mode as a string to be used as a tag for a markdown code block."
   (let ((str (replace-regexp-in-string "-mode$" "" (symbol-name major-mode)) ))
     (if (string-suffix-p "-ts" str) ;; for the new *-ts-modes
@@ -253,11 +251,12 @@ If an action is not passed it will ask the user using ACTION-PROMPT"
   (let ((prompt (read-string "Enter your reply prompt: " nil 'c3po-command-history)))
     (c3po--add-message "user" prompt)
     (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
-    (c3po--request-open-api c3po--last-role
-                            (lambda (result &rest _args)
+    (c3po--request-open-api (lambda (result &rest _args)
                               (c3po--add-message "assistant" result)
                               (c3po-append-result (format "##### 🤖 Answer\n%s\n" result))
-                              (pop-to-buffer c3po-buffer-name)))))
+                              (pop-to-buffer c3po-buffer-name)
+                              (goto-char (point-max))
+                              (recenter)))))
 
 (provide 'c3po)
 ;;; c3po.el ends here
