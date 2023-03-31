@@ -90,7 +90,6 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
          (json-object (json-read-from-string json-string))
          (message-content (aref (cdr (assoc 'choices json-object)) 0))
          (content (cdr (assoc 'content (cdr (assoc 'message message-content))))))
-    (message "🤖: %s" content) ;; debug
     (apply callback content args)))
 
 (defun c3po-append-result (str)
