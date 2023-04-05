@@ -34,7 +34,7 @@
 
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
-(defvar c3po-system-persona-prompts-alist-plist
+(defvar c3po-system-persona-prompts-alist
   `((corrector . (:pre-processors () :post-processors (,#'c3po--show-diff-post-processor ,#'c3po--copy-clipboard-post-processor) :system-prompt "
 Please act as my grammar assistant.
 I will communicate with you in any language and you will correct and enhance the grammar in my text.
@@ -73,25 +73,30 @@ From now on, all my messages to you are intended to be enhanced"))
   "Alist of personas with a Plist of properties.
 Call `c3po-make-persona-helper-functions' to have the helper functions created.")
 
-(defun c3po-get-property-for-persona (persona prop)
+(defvar c3po-command-history nil
+  "History of commands for C3PO.")
+
+(defvar c3po--chat-messages '()
+  "List of messages with personas user and assistant for the current chat.")
+
+(defun c3po-get-persona-property (persona prop)
   "Get property PROP for PERSONA."
-  (plist-get (cdr (assoc persona c3po-system-persona-prompts-alist-plist)) prop))
+  (plist-get (cdr (assoc persona c3po-system-persona-prompts-alist)) prop))
 
 (defun c3po--apply-pre-processors (persona prompt)
   "Get the PERSONA processors and invoke the function, passing the PROMPT."
-  (when-let ((processors (c3po-get-property-for-persona persona :pre-processors)))
+  (when-let ((processors (c3po-get-persona-property persona :pre-processors)))
     (seq-do (lambda (f) (funcall f persona prompt)) processors)))
 
-;; TODO: what about args?
-(defun c3po--apply-post-processors (persona prompt result &rest _args)
+(defun c3po--apply-post-processors (persona prompt result &rest args)
   "Get the PERSONA post-processors and invoke the function, passing the PROMPT and RESULT."
-  (when-let ((processors (c3po-get-property-for-persona persona :post-processors)))
-    (seq-do (lambda (f) (funcall f persona prompt result)) processors)))
+  (when-let ((processors (c3po-get-persona-property persona :post-processors)))
+    (seq-do (lambda (f) (funcall f persona prompt result args)) processors)))
 
 (defun c3po--apply-post-processors-with-replace (persona prompt result &rest args)
   "Get the PERSONA post-processors and invoke the function, passing the PROMPT and RESULT."
   (save-window-excursion
-    (when-let ((processors (append (c3po-get-property-for-persona persona :post-processors) '(c3po--replace-region-post-processor))))
+    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--replace-region-post-processor))))
       (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
 
 (defun c3po--add-to-buffer-pre-processor (persona prompt)
@@ -104,12 +109,6 @@ Call `c3po-make-persona-helper-functions' to have the helper functions created."
   (pop-to-buffer c3po-buffer-name)
   (goto-char (point-max))
   (recenter))
-
-(defvar c3po-command-history nil
-  "History of commands for C3PO.")
-
-(defvar c3po--chat-messages '()
-  "List of messages with personas user and assistant for the current chat.")
 
 (defun c3po--request-openai-api (callback &rest args)
   "Send chat messages request to OpenAI API, get result via CALLBACK.
@@ -170,7 +169,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
           (post-fn (or post-processors-fn #'c3po--apply-post-processors)))
       (c3po--apply-pre-processors persona prompt)
       (c3po-new-chat)
-      (c3po--add-message "system" (c3po-get-property-for-persona persona :system-prompt))
+      (c3po--add-message "system" (c3po-get-persona-property persona :system-prompt))
       (c3po--add-message "user" prompt)
       (apply
        #'c3po--request-openai-api
@@ -238,7 +237,7 @@ Also replaces the region with the result" (symbol-name persona))
 (defun c3po-make-persona-helper-functions ()
   "Create all the persona chats and replace-region chats.
 Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
-  (dolist (element c3po-system-persona-prompts-alist-plist)
+  (dolist (element c3po-system-persona-prompts-alist)
     (progn
       (eval `(!c3po--make-chat ,(car element)))
       (eval `(!c3po--make-replace-region-chat ,(car element))))))
