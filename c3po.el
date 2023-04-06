@@ -21,7 +21,11 @@
 
 (require 'diff-mode)
 (require 'json)
-(require 'markdown-mode) ;; https://github.com/jrblevin/markdown-mode
+
+(if (fboundp 'markdown-mode)
+    (require 'markdown-mode) ; https://github.com/jrblevin/markdown-mode
+  (message "`markdown-mode' package not found, some functionality may be limited."))
+
 (require 'seq)
 (require 'url)
 
@@ -94,7 +98,7 @@ Call `c3po-make-persona-helper-functions' to have the helper functions created."
 (defvar c3po-command-history nil
   "History of commands for C3PO.")
 
-(defvar c3po-chat-messages '()
+(defvar c3po-chat-conversation '()
   "List of messages with personas user and assistant for the current chat.")
 
 (defun c3po-get-persona-property (persona prop)
@@ -112,17 +116,17 @@ It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (when-let ((processors (c3po-get-persona-property persona :post-processors)))
     (seq-do (lambda (f) (funcall f persona prompt result args)) processors)))
 
-(defun c3po--apply-post-processors-with-replace (persona prompt result &rest args)
+(defun c3po--apply-post-processors-and-kill-region (persona prompt result &rest args)
   "Get the PERSONA post-processors and invoke the function.
-It adds an additional processor to replace the current active region.
+It adds an additional processor to kill the current active region.
 It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (save-window-excursion
-    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--replace-region-post-processor))))
+    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--kill-region-post-processor))))
       (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
 
 (defun c3po-is-first-prompt ()
   "Indicate if the chat has only received an user message."
-  (length= c3po-chat-messages 1))
+  (length= c3po-chat-conversation 1))
 
 (defun c3po-add-to-buffer-pre-processor (persona prompt)
   "Pre-processor to add the PERSONA and PROMPT to the `c3po-buffer-name'."
@@ -151,7 +155,7 @@ Pass additional ARGS to the CALLBACK function."
            (url-request-extra-headers `(("Content-Type" . "application/json")
                                         ("Authorization" . ,(encode-coding-string(format "Bearer %s" api-key) 'utf-8))))
            (url-request-data (encode-coding-string
-                              (json-encode `(:model ,model :messages ,c3po-chat-messages))
+                              (json-encode `(:model ,model :messages ,c3po-chat-conversation))
                               'utf-8)))
       (url-retrieve url
                     #'c3po--extract-content-answer
@@ -177,8 +181,8 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (c3po--add-message "assistant" result)
     (apply callback persona prompt result args)))
 
-(defun c3po--chat (persona post-processors-fn &rest args)
-"Prepare the PROMPT for the PERSONA.
+(defun c3po-send-conversation (persona post-processors-fn &rest args)
+  "Prepare the PROMPT for the PERSONA.
 If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'.
 Pass ARGS to the `url-retrieve' function."
   (interactive)
@@ -208,32 +212,40 @@ Pass ARGS to the `url-retrieve' function."
   (save-window-excursion
     (let ((buf (get-buffer-create c3po-buffer-name)))
       (with-current-buffer buf
-        (gfm-mode)
+        (if (featurep 'markdown-mode)
+            (gfm-mode)
+          (text-mode))
         (goto-char (point-max))
         (insert (concat "\n" str))
         (goto-char (point-max))))))
 
-(defun c3po--replace-region-post-processor (_persona _prompt result &rest args)
-  "Callback used to replace region with RESULT using ARGS."
+(defun c3po--kill-region-post-processor (_persona prompt result &rest args)
+  "Callback used to kill region with RESULT using ARGS.
+Check PROMPT to validate if needs to add back the new line."
+  ;; Adds back the final new line if the prompt had it.
+  (when (string-suffix-p "\n" prompt)
+    (setq result (concat result "\n")))
+
   (let* ((arguments (car args))
          (buf (nth 0 arguments)) ; gets buffer name
          (beg (nth 1 arguments)) ; region beg
          (end (nth 2 arguments))) ; region end
     (with-current-buffer buf
       (save-excursion
-        (delete-region beg end)
+        (kill-region beg end)
+        ;; (delete-region beg end)
         (goto-char beg)
         (insert result))
       (keyboard-escape-quit))))
 
-(defun c3po--chat-and-replace-region (persona)
-  "Setup c3po to start a `c3po--chat' with PERSONA.
-And result will be used by `c3po--callback-replace-region'."
+(defun c3po-send-conversation-and-kill-region (persona)
+  "Setup c3po to start a `c3po-send-conversation' with PERSONA.
+And result will be used by `c3po--callback-kill-region'."
   (if (use-region-p)
       (let ((beg (region-beginning))
             (end (region-end)))
-        (c3po--chat persona
-                    #'c3po--apply-post-processors-with-replace
+        (c3po-send-conversation persona
+                    #'c3po--apply-post-processors-and-kill-region
                     (buffer-name) ; here is where the additional args are passed
                     beg
                     end))
@@ -257,28 +269,27 @@ Check if needs to fix RESULT new lines given the PROMPT."
 
 (defmacro !c3po--make-chat (persona)
   "Macro to create functions chats for each PERSONA."
-  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-chat")) ()
+  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat")) ()
      ,(format "Interact with the Chat API using the persona %s." (symbol-name persona))
      (interactive)
      (c3po-new-chat ',persona)
-     (c3po--chat ',persona nil)))
+     (c3po-send-conversation ',persona nil)))
 
-(defmacro !c3po--make-replace-region-chat (persona)
-  "Macro to create functions replacement chats for each PERSONA."
-  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-chat-replace-region")) ()
-     ,(format "Interact with the Chat API using the persona %s.
-Also replaces the region with the result" (symbol-name persona))
+(defmacro !c3po--make-kill-region-chat (persona)
+  "Macro to create functions to kill regions chats for each PERSONA."
+  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat-kill-region")) ()
+     ,(format "Interact with the Chat API using the persona %s. Also kill the region with the result." (symbol-name persona))
      (interactive)
      (c3po-new-chat ',persona)
-     (c3po--chat-and-replace-region ',persona)))
+     (c3po-send-conversation-and-kill-region ',persona)))
 
 (defun c3po-make-persona-helper-functions ()
-  "Create all the persona chats and replace-region chats.
-Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
+  "Create all the persona chats and kill-region chats.
+Example: c3po-corrector-chat, c3po-corrector-chat-kill-region, etc."
   (dolist (element c3po-system-persona-prompts-alist)
     (progn
       (eval `(!c3po--make-chat ,(car element)))
-      (eval `(!c3po--make-replace-region-chat ,(car element))))))
+      (eval `(!c3po--make-kill-region-chat ,(car element))))))
 (c3po-make-persona-helper-functions)
 
 (defun c3po--diff-strings (str1 str2)
@@ -295,10 +306,6 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
       (diff buf1 buf2 "-U0") ; -U0: Unidiff with 0 lines of context
       (diff-mode)
       (diff-refine-hunk)) ; to highlight single character changes
-    ;; not interested for now, as I can use the diff buffer to show diffs
-    ;; additional (buffer-string) is only returning the first line :/
-    ;; (with-current-buffer "*Diff*"
-    ;;   (setq diff-output (buffer-string)))
     (kill-buffer buf1)
     (kill-buffer buf2)
     diff-output))
@@ -306,7 +313,7 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
 (defun c3po-explain-code ()
   "Explain the code for the selected region, or prompt the user for input."
   (interactive)
-  (c3po--chat
+  (c3po-send-conversation
    'developer
    (lambda (prompt)
      (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) prompt))))
@@ -318,22 +325,20 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
         (substring str 0 (- (length str) 3))
       str)))
 
-;;; Chat support
-
 (defun c3po--add-message (role content)
   "Add a message with given ROLE and CONTENT to the chat message alist."
-  (setq c3po-chat-messages (append c3po-chat-messages `((("role" . ,role) ("content" . ,content))))))
+  (setq c3po-chat-conversation (append c3po-chat-conversation `((("role" . ,role) ("content" . ,content))))))
 
 (defun c3po-new-chat (persona)
-  "Reset the chat messages to set it up with a new PERSONA."
-  (setq c3po-chat-messages '())
+  "Reset the chat conversation and set a new chat using PERSONA."
+  (setq c3po-chat-conversation '())
   (c3po--add-message "system" (c3po-get-persona-property persona :system-prompt))
   (setq c3po--last-used-persona persona))
 
 (defun c3po-reply ()
-  "Reply with a message and submit the information."
+  "Reply with a message and submit the new conversation."
   (interactive)
-  (c3po--chat c3po--last-used-persona nil))
+  (c3po-send-conversation c3po--last-used-persona nil))
 
 (provide 'c3po)
 ;;; c3po.el ends here
