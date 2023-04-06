@@ -9,7 +9,7 @@
 ;;
 ;;; Commentary:
 ;; 🤖 Meet c3po.el, the Emacs droid you’ve been looking for!
-;; This package will take your workflow to a galaxy far, far away. 🌟
+;; This package will take your workflow to a galaxy far, far away.  🌟
 ;; C3PO.el is an Emacs package for interacting with the ChatGPT API.
 ;; May the source be with you!
 ;;
@@ -34,11 +34,25 @@
 
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
+(defvar c3po--last-used-persona nil "Last used persona to be used for replies.")
+
 (defvar c3po-system-persona-prompts-alist
-  `((corrector . (:pre-processors () :post-processors (,#'c3po--show-diff-post-processor ,#'c3po--copy-clipboard-post-processor) :system-prompt "
+  '((corrector . (
+                  :pre-processors nil
+                  :post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
+                  :system-prompt "
 Please act as my grammar assistant.
-I will communicate with you in any language and you will correct and enhance the grammar in my text.
-You may use contractions and avoid passive voice.
+
+I'll communicate with you in any language and you will correct and enhance the grammar in my text.
+
+You should not modify contractions and avoid passive voice.
+If I write:
+user: I'll be fine
+You shouldn't answer with:
+assistant: I will be fine.
+You should answer with:
+assistant: I'll be fine.
+
 I want you to only reply with the correction and nothing else, no explanations or questions.
 
 If no corrections are needed, reply with the original text, example:
@@ -51,32 +65,36 @@ assistant: Please act as my grammar assistant.
 
 The raw messages will be specified next, don't expect more commands:."))
 
-    (developer . (:pre-processors (,#'c3po--add-to-buffer-pre-processor) :post-processors (,#'c3po--add-to-buffer-post-processor) :system-prompt "
+    (developer . (
+                  :pre-processors (c3po-add-to-buffer-pre-processor)
+                  :post-processors (c3po-add-to-buffer-post-processor)
+                  :system-prompt "
 You're a programming expert.
 Your answers should be brief.
 Your answers MUST be in full and well written markdown, code blocks MUST use the correct language tag."))
 
-    (general . (:pre-processors (,#'c3po--add-to-buffer-pre-processor) :post-processors (,#'c3po--add-to-buffer-post-processor)
-                                :system-prompt "You are a helpful assistant. Keep it concise."))
+    (general . (
+                :pre-processors (c3po-add-to-buffer-pre-processor)
+                :post-processors (c3po-add-to-buffer-post-processor)
+                :system-prompt "You are a helpful assistant. Keep it concise."))
 
-    (rewriter . (:pre-processors (,#'c3po--add-to-buffer-pre-processor) :post-processors (,#'c3po--add-to-buffer-post-processor ,'c3po--show-diff-post-processor)
-                                 :system-prompt "
+    (rewriter . (
+                 :pre-processors (c3po-add-to-buffer-pre-processor)
+                 :post-processors (c3po-add-to-buffer-post-processor c3po-show-diff-post-processor)
+                 :system-prompt "
 Please act as my writing assistant with a programming expertise.
 I will speak to you in any language and you can enhance my text accordingly.
 Maintain the meaning, use contractions, and avoid passive voice.
 Your response MUST only include the improved text, without explanations or questions.
 Keep it concise.
-From now on, all my messages to you are intended to be enhanced"))
-
-    (summarizer . (:pre-processors (,#'c3po--add-to-buffer-pre-processor) :post-processors (,#'c3po--add-to-buffer-post-processor)
-                                   :system-prompt "Please act as my writing assistant with a programming expertise. tl;dr")))
+From now on, all my messages to you are intended to be enhanced")))
   "Alist of personas with a Plist of properties.
 Call `c3po-make-persona-helper-functions' to have the helper functions created.")
 
 (defvar c3po-command-history nil
   "History of commands for C3PO.")
 
-(defvar c3po--chat-messages '()
+(defvar c3po-chat-messages '()
   "List of messages with personas user and assistant for the current chat.")
 
 (defun c3po-get-persona-property (persona prop)
@@ -89,22 +107,32 @@ Call `c3po-make-persona-helper-functions' to have the helper functions created."
     (seq-do (lambda (f) (funcall f persona prompt)) processors)))
 
 (defun c3po--apply-post-processors (persona prompt result &rest args)
-  "Get the PERSONA post-processors and invoke the function, passing the PROMPT and RESULT."
+  "Get the PERSONA post-processors and invoke the function.
+It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (when-let ((processors (c3po-get-persona-property persona :post-processors)))
     (seq-do (lambda (f) (funcall f persona prompt result args)) processors)))
 
 (defun c3po--apply-post-processors-with-replace (persona prompt result &rest args)
-  "Get the PERSONA post-processors and invoke the function, passing the PROMPT and RESULT."
+  "Get the PERSONA post-processors and invoke the function.
+It adds an additional processor to replace the current active region.
+It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (save-window-excursion
     (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--replace-region-post-processor))))
       (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
 
-(defun c3po--add-to-buffer-pre-processor (persona prompt)
-  (c3po-append-result
-   (format "\n# New Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" persona (format-time-string "%A, %e %B %Y %T %Z") prompt))
-  prompt)
+(defun c3po-is-first-prompt ()
+  "Indicate if the chat has only received an user message."
+  (length= c3po-chat-messages 1))
 
-(defun c3po--add-to-buffer-post-processor (_persona _prompt result &rest _args)
+(defun c3po-add-to-buffer-pre-processor (persona prompt)
+  "Pre-processor to add the PERSONA and PROMPT to the `c3po-buffer-name'."
+  (c3po-append-result
+   (if (c3po-is-first-prompt)
+       (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" persona (format-time-string "%A, %e %B %Y %T %Z") prompt)
+     (format "## 🙋‍♂️ Prompt\n%s\n" prompt))))
+
+(defun c3po-add-to-buffer-post-processor (_persona _prompt result &rest _args)
+  "Post-processor to add the RESULT to the `c3po-buffer-name'."
   (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
   (pop-to-buffer c3po-buffer-name)
   (goto-char (point-max))
@@ -123,7 +151,7 @@ Pass additional ARGS to the CALLBACK function."
            (url-request-extra-headers `(("Content-Type" . "application/json")
                                         ("Authorization" . ,(encode-coding-string(format "Bearer %s" api-key) 'utf-8))))
            (url-request-data (encode-coding-string
-                              (json-encode `(:model ,model :messages ,c3po--chat-messages))
+                              (json-encode `(:model ,model :messages ,c3po-chat-messages))
                               'utf-8)))
       (url-retrieve url
                     #'c3po--extract-content-answer
@@ -150,7 +178,9 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (apply callback persona prompt result args)))
 
 (defun c3po--chat (persona post-processors-fn &rest args)
-  "If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'."
+"Prepare the PROMPT for the PERSONA.
+If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'.
+Pass ARGS to the `url-retrieve' function."
   (interactive)
   (catch 'my-tag
     (let ((prompt (if current-prefix-arg
@@ -168,8 +198,6 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
                     ))
           (post-fn (or post-processors-fn #'c3po--apply-post-processors)))
       (c3po--apply-pre-processors persona prompt)
-      (c3po-new-chat)
-      (c3po--add-message "system" (c3po-get-persona-property persona :system-prompt))
       (c3po--add-message "user" prompt)
       (apply
        #'c3po--request-openai-api
@@ -185,7 +213,7 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
         (insert (concat "\n" str))
         (goto-char (point-max))))))
 
-(defun c3po--replace-region-post-processor (persona prompt result &rest args)
+(defun c3po--replace-region-post-processor (_persona _prompt result &rest args)
   "Callback used to replace region with RESULT using ARGS."
   (let* ((arguments (car args))
          (buf (nth 0 arguments)) ; gets buffer name
@@ -211,19 +239,28 @@ And result will be used by `c3po--callback-replace-region'."
                     end))
     (message "No region selected or region is empty")))
 
-(defun c3po--show-diff-post-processor (_persona prompt result &rest _args)
+(defun c3po-show-diff-post-processor (_persona prompt result &rest _args)
   "Callback to show diff from PROMPT vs RESULT (tail of ARGS)."
+  ;; Adds back the final new line if the prompt had it.
+  (when (string-suffix-p "\n" prompt)
+    (setq result (concat result "\n")))
   (c3po--diff-strings prompt result)
   (pop-to-buffer "*Diff*"))
 
-(defun c3po--copy-clipboard-post-processor (_persona _prompt result &rest _args)
-  (kill-new result))
+(defun c3po-copy-clipboard-post-processor (_persona prompt result &rest _args)
+  "Post-processor to copy the RESULT to the kill ring.
+Check if needs to fix RESULT new lines given the PROMPT."
+  ;; Adds back the final new line if the prompt had it.
+  (if (string-suffix-p "\n" prompt)
+      (kill-new (concat result "\n"))
+    (kill-new result)))
 
 (defmacro !c3po--make-chat (persona)
   "Macro to create functions chats for each PERSONA."
   `(defun ,(intern (concat "c3po-" (symbol-name persona) "-chat")) ()
      ,(format "Interact with the Chat API using the persona %s." (symbol-name persona))
      (interactive)
+     (c3po-new-chat ',persona)
      (c3po--chat ',persona nil)))
 
 (defmacro !c3po--make-replace-region-chat (persona)
@@ -232,6 +269,7 @@ And result will be used by `c3po--callback-replace-region'."
      ,(format "Interact with the Chat API using the persona %s.
 Also replaces the region with the result" (symbol-name persona))
      (interactive)
+     (c3po-new-chat ',persona)
      (c3po--chat-and-replace-region ',persona)))
 
 (defun c3po-make-persona-helper-functions ()
@@ -284,23 +322,18 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
 
 (defun c3po--add-message (role content)
   "Add a message with given ROLE and CONTENT to the chat message alist."
-  (setq c3po--chat-messages (append c3po--chat-messages `((("role" . ,role) ("content" . ,content))))))
+  (setq c3po-chat-messages (append c3po-chat-messages `((("role" . ,role) ("content" . ,content))))))
 
-(defun c3po-new-chat ()
-  "Reset the chat message list to an empty list."
-  (setq c3po--chat-messages '()))
+(defun c3po-new-chat (persona)
+  "Reset the chat messages to set it up with a new PERSONA."
+  (setq c3po-chat-messages '())
+  (c3po--add-message "system" (c3po-get-persona-property persona :system-prompt))
+  (setq c3po--last-used-persona persona))
 
 (defun c3po-reply ()
   "Reply with a message and submit the information."
   (interactive)
-  (let ((prompt (read-string "Enter your reply prompt: " nil 'c3po-command-history)))
-    (c3po--add-message "user" prompt)
-    (c3po-append-result (format "#### 🙋‍♂️ Reply\n%s\n" prompt))
-    (c3po--request-openai-api (lambda (result &rest _args)
-                                (c3po-append-result (format "##### 🤖 Answer\n%s\n" result))
-                                (pop-to-buffer c3po-buffer-name)
-                                (goto-char (point-max))
-                                (recenter)))))
+  (c3po--chat c3po--last-used-persona nil))
 
 (provide 'c3po)
 ;;; c3po.el ends here
