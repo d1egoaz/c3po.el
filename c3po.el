@@ -21,11 +21,9 @@
 
 (require 'diff-mode)
 (require 'json)
-
 (if (fboundp 'markdown-mode)
     (require 'markdown-mode) ; https://github.com/jrblevin/markdown-mode
   (message "`markdown-mode' package not found, some functionality may be limited."))
-
 (require 'seq)
 (require 'url)
 
@@ -124,14 +122,14 @@ It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
     (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--kill-region-post-processor))))
       (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
 
-(defun c3po-is-first-prompt ()
-  "Indicate if the chat has only received an user message."
+(defun c3po-is-initial-system-message-p ()
+  "Return t if the chat has only received an initial system message."
   (length= c3po-chat-conversation 1))
 
 (defun c3po-add-to-buffer-pre-processor (persona prompt)
   "Pre-processor to add the PERSONA and PROMPT to the `c3po-buffer-name'."
   (c3po-append-result
-   (if (c3po-is-first-prompt)
+   (if (c3po-is-initial-system-message-p)
        (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" persona (format-time-string "%A, %e %B %Y %T %Z") prompt)
      (format "## 🙋‍♂️ Prompt\n%s\n" prompt))))
 
@@ -209,15 +207,14 @@ Pass ARGS to the `url-retrieve' function."
 
 (defun c3po-append-result (str)
   "Insert STR at the end of the c3po buffer."
-  (save-window-excursion
-    (let ((buf (get-buffer-create c3po-buffer-name)))
-      (with-current-buffer buf
-        (if (featurep 'markdown-mode)
-            (gfm-mode)
-          (text-mode))
-        (goto-char (point-max))
-        (insert (concat "\n" str))
-        (goto-char (point-max))))))
+  (let ((buf (get-buffer-create c3po-buffer-name)))
+    (with-current-buffer buf
+      (if (featurep 'markdown-mode)
+          (gfm-mode)
+        (text-mode))
+      (goto-char (point-max))
+      (insert (concat "\n" str))
+      (goto-char (point-max)))))
 
 (defun c3po--kill-region-post-processor (_persona prompt result &rest args)
   "Callback used to kill region with RESULT using ARGS.
@@ -245,10 +242,10 @@ And result will be used by `c3po--callback-kill-region'."
       (let ((beg (region-beginning))
             (end (region-end)))
         (c3po-send-conversation persona
-                    #'c3po--apply-post-processors-and-kill-region
-                    (buffer-name) ; here is where the additional args are passed
-                    beg
-                    end))
+                                #'c3po--apply-post-processors-and-kill-region
+                                (buffer-name) ; here is where the additional args are passed
+                                beg
+                                end))
     (message "No region selected or region is empty")))
 
 (defun c3po-show-diff-post-processor (_persona prompt result &rest _args)
