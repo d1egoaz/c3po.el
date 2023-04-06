@@ -42,6 +42,7 @@
   '((corrector . (
                   :pre-processors nil
                   :post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
+                  :transient-key "c"
                   :system-prompt "
 Please act as my grammar assistant.
 
@@ -70,6 +71,7 @@ The raw messages will be specified next, don't expect more commands:."))
     (developer . (
                   :pre-processors (c3po-add-to-buffer-pre-processor)
                   :post-processors (c3po-add-to-buffer-post-processor)
+                  :transient-key "d"
                   :system-prompt "
 You're a programming expert.
 Your answers should be brief.
@@ -78,11 +80,13 @@ Your answers MUST be in full and well written markdown, code blocks MUST use the
     (general . (
                 :pre-processors (c3po-add-to-buffer-pre-processor)
                 :post-processors (c3po-add-to-buffer-post-processor)
+                :transient-key "g"
                 :system-prompt "You are a helpful assistant. Keep it concise."))
 
     (rewriter . (
                  :pre-processors (c3po-add-to-buffer-pre-processor)
                  :post-processors (c3po-add-to-buffer-post-processor c3po-show-diff-post-processor)
+                 :transient-key "r"
                  :system-prompt "
 Please act as my writing assistant with a programming expertise.
 I will speak to you in any language and you can enhance my text accordingly.
@@ -98,6 +102,34 @@ Call `c3po-make-persona-helper-functions' to have the helper functions created."
 
 (defvar c3po-chat-conversation '()
   "List of messages with personas user and assistant for the current chat.")
+
+(defun create-c3po-dispatch ()
+  "Creates a transient prefix dispatcher for each key in ALIST."
+  (let ((items nil))
+    (dolist (item c3po-system-persona-prompts-alist)
+      (let* (
+             (persona (car item))
+             (persona-name (symbol-name persona))
+             (cmd (intern (concat "c3po-" persona-name "-new-chat"))))
+        (push (list (c3po-get-persona-property persona :transient-key) persona-name cmd) items)))
+    (eval `(transient-define-prefix c3po-dispatch ()
+             "C3PO transient dispatch."
+             [["Actions"
+               ,@items
+               ]]))))
+
+(defun c3po-add-new-persona-with-defaults-processors(persona transient-key system-prompt)
+  (if (symbolp persona)
+      (progn
+        (add-to-list 'c3po-system-persona-prompts-alist
+                     `(,persona . (
+                                   :pre-processors (,'c3po-add-to-buffer-pre-processor)
+                                   :post-processors (,'c3po-add-to-buffer-post-processor)
+                                   :transient-key ,transient-key
+                                   :system-prompt ,system-prompt)))
+        ;; recreate functions using the macros
+        (c3po-make-persona-helper-functions))
+    (message "Please use a symbol for the persona key")))
 
 (defun c3po-get-persona-property (persona prop)
   "Get property PROP for PERSONA."
@@ -284,9 +316,11 @@ Check if needs to fix RESULT new lines given the PROMPT."
   "Create all the persona chats and kill-region chats.
 Example: c3po-corrector-chat, c3po-corrector-chat-kill-region, etc."
   (dolist (element c3po-system-persona-prompts-alist)
-    (progn
+    (let ((persona (car element)))
       (eval `(!c3po--make-chat ,(car element)))
-      (eval `(!c3po--make-kill-region-chat ,(car element))))))
+      (eval `(!c3po--make-kill-region-chat ,(car element)))))
+  (create-c3po-dispatch))
+
 (c3po-make-persona-helper-functions)
 
 (defun c3po--diff-strings (str1 str2)
