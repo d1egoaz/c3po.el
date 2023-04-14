@@ -36,9 +36,9 @@
 
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
-(defvar c3po--last-used-persona nil "Last used persona to be used for replies.")
+(defvar c3po--last-used-droid nil "Last used droid to be used for replies.")
 
-(defvar c3po-system-persona-prompts-alist
+(defvar c3po-droids-alist
   '(
     (assistant . (
                 :pre-processors (c3po-add-to-buffer-pre-processor)
@@ -83,78 +83,78 @@ Maintain the meaning, use contractions, and avoid passive voice.
 Your response MUST only include the improved text, without explanations or questions.
 Keep it concise.
 From now on, all my messages to you are intended to be enhanced")))
-  "Alist of personas with a Plist of properties.
-Call `c3po-make-persona-helper-functions' to have the helper functions created.")
+  "Alist of droids with a Plist of properties.
+Call `c3po-make-droid-helper-functions' to have the helper functions created.")
 
 (defvar c3po-command-history nil
   "History of commands for C3PO.")
 
 (defvar c3po-chat-conversation '()
-  "List of messages with personas user and assistant for the current chat.")
+  "List of messages with droids user and assistant for the current chat.")
 
 (defun create-c3po-dispatch ()
   "Creates a transient prefix dispatcher for each key in ALIST."
   (let ((items nil))
-    (dolist (item c3po-system-persona-prompts-alist)
+    (dolist (item c3po-droids-alist)
       (let* (
-             (persona (car item))
-             (persona-name (symbol-name persona))
-             (cmd (intern (concat "c3po-" persona-name "-new-chat"))))
-        (push (list (c3po-get-persona-property persona :transient-key) persona-name cmd) items)))
-    (eval `(transient-define-prefix c3po-dispatch ()
+             (droid (car item))
+             (droid-name (symbol-name droid))
+             (cmd (intern (concat "c3po-" droid-name "-new-chat"))))
+        (push (list (c3po-get-droid-property droid :transient-key) droid-name cmd) items)))
+    (eval `(transient-define-prefix c3po-droids-dispatch ()
              "C3PO transient dispatch."
-             [["Actions"
+             [["🤖 Available Droids 🤖"
                ,@items
                ]]))))
 
-(defun c3po-add-new-persona-with-defaults-processors(persona transient-key system-prompt)
-  (if (symbolp persona)
+(defun c3po-add-new-droid-with-defaults-processors(droid transient-key system-prompt)
+  (if (symbolp droid)
       (progn
-        (add-to-list 'c3po-system-persona-prompts-alist
-                     `(,persona . (
+        (add-to-list 'c3po-droids-alist
+                     `(,droid . (
                                    :pre-processors (,'c3po-add-to-buffer-pre-processor)
                                    :post-processors (,'c3po-add-to-buffer-post-processor)
                                    :transient-key ,transient-key
                                    :system-prompt ,system-prompt)))
         ;; recreate functions using the macros
-        (c3po-make-persona-helper-functions))
-    (message "Please use a symbol for the persona key")))
+        (c3po-make-droid-helper-functions))
+    (message "Please use a symbol for the droid key")))
 
-(defun c3po-get-persona-property (persona prop)
-  "Get property PROP for PERSONA."
-  (plist-get (cdr (assoc persona c3po-system-persona-prompts-alist)) prop))
+(defun c3po-get-droid-property (droid prop)
+  "Get property PROP for DROID."
+  (plist-get (cdr (assoc droid c3po-droids-alist)) prop))
 
-(defun c3po--apply-pre-processors (persona prompt)
-  "Get the PERSONA processors and invoke the function, passing the PROMPT."
-  (when-let ((processors (c3po-get-persona-property persona :pre-processors)))
-    (seq-do (lambda (f) (funcall f persona prompt)) processors)))
+(defun c3po--apply-pre-processors (droid prompt)
+  "Get the DROID processors and invoke the function, passing the PROMPT."
+  (when-let ((processors (c3po-get-droid-property droid :pre-processors)))
+    (seq-do (lambda (f) (funcall f droid prompt)) processors)))
 
-(defun c3po--apply-post-processors (persona prompt result &rest args)
-  "Get the PERSONA post-processors and invoke the function.
-It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
-  (when-let ((processors (c3po-get-persona-property persona :post-processors)))
-    (seq-do (lambda (f) (funcall f persona prompt result args)) processors)))
+(defun c3po--apply-post-processors (droid prompt result &rest args)
+  "Get the DROID post-processors and invoke the function.
+It pass to the function the DROID, PROMPT, RESULT, and ARGS."
+  (when-let ((processors (c3po-get-droid-property droid :post-processors)))
+    (seq-do (lambda (f) (funcall f droid prompt result args)) processors)))
 
-(defun c3po--apply-post-processors-and-replace-region (persona prompt result &rest args)
-  "Get the PERSONA post-processors and invoke the function.
+(defun c3po--apply-post-processors-and-replace-region (droid prompt result &rest args)
+  "Get the DROID post-processors and invoke the function.
 It adds an additional processor to kill the current active region.
-It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
+It pass to the function the DROID, PROMPT, RESULT, and ARGS."
   (save-window-excursion
-    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--replace-region-post-processor))))
-      (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
+    (when-let ((processors (append (c3po-get-droid-property droid :post-processors) '(c3po--replace-region-post-processor))))
+      (seq-do (lambda (f) (funcall f droid prompt result args)) processors))))
 
 (defun c3po-is-initial-system-message-p ()
   "Return t if the chat has only received an initial system message."
   (length= c3po-chat-conversation 1))
 
-(defun c3po-add-to-buffer-pre-processor (persona prompt)
-  "Pre-processor to add the PERSONA and PROMPT to the `c3po-buffer-name'."
+(defun c3po-add-to-buffer-pre-processor (droid prompt)
+  "Pre-processor to add the DROID and PROMPT to the `c3po-buffer-name'."
   (c3po-append-result
    (if (c3po-is-initial-system-message-p)
-       (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" persona (format-time-string "%A, %e %B %Y %T %Z") prompt)
+       (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" droid (format-time-string "%A, %e %B %Y %T %Z") prompt)
      (format "## 🙋‍♂️ Prompt\n%s\n" prompt))))
 
-(defun c3po-add-to-buffer-post-processor (_persona _prompt result &rest _args)
+(defun c3po-add-to-buffer-post-processor (_droid _prompt result &rest _args)
   "Post-processor to add the RESULT to the `c3po-buffer-name'."
   (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
   (pop-to-buffer c3po-buffer-name)
@@ -191,17 +191,17 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
          (message-content (aref (cdr (assoc 'choices json-object)) 0))
          (result (cdr (assoc 'content (cdr (assoc 'message message-content)))))
          (args2 (car args))
-         (persona (cdr (assoc 'persona args2)))
+         (droid (cdr (assoc 'droid args2)))
          (prompt (cdr (assoc 'prompt args2)))
          (args (cdr (assoc 'args args2))))
     ;; post-processor
     ;; (when (string-suffix-p "\n" c3po--last-user-message)
     ;;   (setq content (concat content "\n")))
     (c3po--add-message "assistant" result)
-    (apply callback persona prompt result args)))
+    (apply callback droid prompt result args)))
 
-(defun c3po-send-conversation (persona prompt post-processors-fn &rest args)
-  "Prepare the PROMPT for the PERSONA.
+(defun c3po-send-conversation (droid prompt post-processors-fn &rest args)
+  "Prepare the PROMPT for the DROID.
 If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'.
 Pass ARGS to the `url-retrieve' function."
   (interactive)
@@ -209,7 +209,7 @@ Pass ARGS to the `url-retrieve' function."
     (let ((prompt (or prompt (if current-prefix-arg
                                  (if (use-region-p)
                                      (concat
-                                      (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name persona)) nil 'c3po-command-history)
+                                      (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name droid)) nil 'c3po-command-history)
                                       "\n"
                                       (buffer-substring-no-properties (region-beginning) (region-end)))
                                    (progn
@@ -217,14 +217,14 @@ Pass ARGS to the `url-retrieve' function."
                                      (throw 'my-tag nil)))
                                (if (use-region-p)
                                    (buffer-substring-no-properties (region-beginning) (region-end))
-                                 (read-string (format "(%s)> Enter the prompt: " (symbol-name persona)) nil 'c3po-command-history))
+                                 (read-string (format "(%s)> Enter the prompt: " (symbol-name droid)) nil 'c3po-command-history))
                                )))
           (post-fn (or post-processors-fn #'c3po--apply-post-processors)))
-      (c3po--apply-pre-processors persona prompt)
+      (c3po--apply-pre-processors droid prompt)
       (c3po--add-message "user" prompt)
       (apply
        #'c3po--request-openai-api
-       post-fn `((persona . ,persona) (prompt . ,prompt) (args . ,args))))))
+       post-fn `((droid . ,droid) (prompt . ,prompt) (args . ,args))))))
 
 (defun c3po-append-result (str)
   "Insert STR at the end of the c3po buffer."
@@ -237,7 +237,7 @@ Pass ARGS to the `url-retrieve' function."
       (insert (concat "\n" str))
       (goto-char (point-max)))))
 
-(defun c3po--replace-region-post-processor (_persona prompt result &rest args)
+(defun c3po--replace-region-post-processor (_droid prompt result &rest args)
   "Callback used to kill region with RESULT using ARGS.
 Check PROMPT to validate if needs to add back the new line."
   ;; Adds back the final new line if the prompt had it.
@@ -256,13 +256,13 @@ Check PROMPT to validate if needs to add back the new line."
         (insert result))
       (keyboard-escape-quit))))
 
-(defun c3po-send-conversation-and-replace-region (persona)
-  "Setup c3po to start a `c3po-send-conversation' with PERSONA.
+(defun c3po-send-conversation-and-replace-region (droid)
+  "Setup c3po to start a `c3po-send-conversation' with DROID.
 And result will be used by `c3po--callback-replace-region'."
   (if (use-region-p)
       (let ((beg (region-beginning))
             (end (region-end)))
-        (c3po-send-conversation persona
+        (c3po-send-conversation droid
                                 nil
                                 #'c3po--apply-post-processors-and-replace-region
                                 (buffer-name) ; here is where the additional args are passed
@@ -270,7 +270,7 @@ And result will be used by `c3po--callback-replace-region'."
                                 end))
     (message "No region selected or region is empty")))
 
-(defun c3po-show-diff-post-processor (_persona prompt result &rest _args)
+(defun c3po-show-diff-post-processor (_droid prompt result &rest _args)
   "Callback to show diff from PROMPT vs RESULT (tail of ARGS)."
   ;; Adds back the final new line if the prompt had it.
   (when (string-suffix-p "\n" prompt)
@@ -278,7 +278,7 @@ And result will be used by `c3po--callback-replace-region'."
   (c3po--diff-strings prompt result)
   (pop-to-buffer "*Diff*"))
 
-(defun c3po-copy-clipboard-post-processor (_persona prompt result &rest _args)
+(defun c3po-copy-clipboard-post-processor (_droid prompt result &rest _args)
   "Post-processor to copy the RESULT to the kill ring.
 Check if needs to fix RESULT new lines given the PROMPT."
   ;; Adds back the final new line if the prompt had it.
@@ -287,32 +287,32 @@ Check if needs to fix RESULT new lines given the PROMPT."
     (kill-new result))
   (message "🤖 Result copied to kill ring!"))
 
-(defmacro !c3po--make-chat (persona)
-  "Macro to create functions chats for each PERSONA."
-  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat")) ()
-     ,(format "Interact with the Chat API using the persona %s." (symbol-name persona))
+(defmacro !c3po--make-chat (droid)
+  "Macro to create functions chats for each DROID."
+  `(defun ,(intern (concat "c3po-" (symbol-name droid) "-new-chat")) ()
+     ,(format "Interact with the Chat API using the droid %s." (symbol-name droid))
      (interactive)
-     (c3po-new-chat ',persona)
-     (c3po-send-conversation ',persona nil nil)))
+     (c3po-new-chat ',droid)
+     (c3po-send-conversation ',droid nil nil)))
 
-(defmacro !c3po--make-replace-region-chat (persona)
-  "Macro to create functions to kill regions chats for each PERSONA."
-  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat-replace-region")) ()
-     ,(format "Interact with the Chat API using the persona %s. Also kill the region with the result." (symbol-name persona))
+(defmacro !c3po--make-replace-region-chat (droid)
+  "Macro to create functions to kill regions chats for each DROID."
+  `(defun ,(intern (concat "c3po-" (symbol-name droid) "-new-chat-replace-region")) ()
+     ,(format "Interact with the Chat API using the droid %s. Also kill the region with the result." (symbol-name droid))
      (interactive)
-     (c3po-new-chat ',persona)
-     (c3po-send-conversation-and-replace-region ',persona)))
+     (c3po-new-chat ',droid)
+     (c3po-send-conversation-and-replace-region ',droid)))
 
-(defun c3po-make-persona-helper-functions ()
-  "Create all the persona chats and replace-region chats.
+(defun c3po-make-droid-helper-functions ()
+  "Create all the droid chats and replace-region chats.
 Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
-  (dolist (element c3po-system-persona-prompts-alist)
-    (let ((persona (car element)))
-      (eval `(!c3po--make-chat ,persona))
-      (eval `(!c3po--make-replace-region-chat ,persona))))
+  (dolist (element c3po-droids-alist)
+    (let ((droid (car element)))
+      (eval `(!c3po--make-chat ,droid))
+      (eval `(!c3po--make-replace-region-chat ,droid))))
   (create-c3po-dispatch))
 
-(c3po-make-persona-helper-functions)
+(c3po-make-droid-helper-functions)
 
 (defun c3po--diff-strings (str1 str2)
   "Compare two strings (STR1 and STR2) and return the result."
@@ -355,16 +355,16 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
   "Add a message with given ROLE and CONTENT to the chat message alist."
   (setq c3po-chat-conversation (append c3po-chat-conversation `((("role" . ,role) ("content" . ,content))))))
 
-(defun c3po-new-chat (persona)
-  "Reset the chat conversation and set a new chat using PERSONA."
+(defun c3po-new-chat (droid)
+  "Reset the chat conversation and set a new chat using DROID."
   (setq c3po-chat-conversation '())
-  (c3po--add-message "system" (c3po-get-persona-property persona :system-prompt))
-  (setq c3po--last-used-persona persona))
+  (c3po--add-message "system" (c3po-get-droid-property droid :system-prompt))
+  (setq c3po--last-used-droid droid))
 
 (defun c3po-reply ()
   "Reply with a message and submit the new conversation."
   (interactive)
-  (c3po-send-conversation c3po--last-used-persona nil nil))
+  (c3po-send-conversation c3po--last-used-droid nil nil))
 
 ;; Make sure to show the diff buffer when calling `c3po-corrector-new-chat-replace-region'.
 (advice-add 'c3po-corrector-new-chat-replace-region :after (lambda () (pop-to-buffer "*Diff*")))

@@ -10,20 +10,162 @@ This package will take your workflow to a galaxy far, far away. 🌟
 
 **May the source be with you!**
 
-_This is my first package, it's what I've been using daily. I just wanted to share my workflow and improve my Emacs Lisp skills._
+## Available Droids `c3po-droids-alist`
 
-## Some Details
-- ChatGPT API is called using only emacs built-in packages. I'm using Emacs 30+.
-- Except for the region replacement commands, all prompts and responses are displayed in the C3PO buffer.
-- Commands without a specified region will prompt the user for input.
-- All commands support a conversation style, so you can reply with additional prompts.
-  The session messages are stored in memory, so you can modify the result buffer without affecting the conversation.
-- Some commands by default initiate a new conversation session:
-  - `c3po-dev-chat`, `c3po-chat`, `c3po-correct-grammar`, `c3po-correct-grammar-and-replace`, `c3po-rewrite-text`, `c3po-rewrite-and-replace`, `c3po-explain-code`, and `c3po-summarize`.
-  - You can keep the conversation going by using `c3po-reply`.
-- The `dev` and writter roles/personas system prompts can be configurable. I'll probably add something later.
+`assistant`, `corrector`, `developer`, and `rewriter`.
+
+Each of the droids defined in `c3po-droids-alist` will automatically have two functions created: `-new-chat` and `-new-chat-replace-region`.
+
+The result for all the droids is:
+- `c3po-assistant-new-chat`
+- `c3po-assistant-new-chat-replace-region`
+- `c3po-corrector-new-chat`
+- `c3po-corrector-new-chat-replace-region`
+- `c3po-developer-new-chat`
+- `c3po-developer-new-chat-replace-region`
+- `c3po-rewriter-new-chat`
+- `c3po-rewriter-new-chat-replace-region`
+
+### `-new-chat` functions
+
+These functions will always start a new conversation, and this is how a prompt is selected:
+
+``` mermaid
+flowchart TD
+    A[M-x] -->B(c3po-_droid_-new-chat)
+    B --> C{A region is active}
+    C -->|No| E[Ask user for prompt]
+    E -->F[ChatGPT]
+    C --> |Yes| D{Was called with\nuniversal-argument?}
+    D -->|Yes| G[Ask user for prompt prefix]
+    D -->|No\nUse region as prompt| F
+    G -->|prompt=prefix+region| F
+```
+
+These droids can also be easily accessed using `c3po-droids-dispatch`.
+
+### `-new-chat-replace-region` functions
+
+These functions will only work on active regions, and also support an additional prefix via `universal-argument`.
+
+## Additional Functions
+
+- `c3po-explain-code` Use this over a region.
+
+You can also replace it easily by calling `C-u c3po-developer-new-chat` and adding the prefix "explain this code."
+
+## Adding new droids
+
+The core configuration of the droids relies on `c3po-droids-alist`.
+
+### Alist entry
+
+A new droid is created using this template:
+
+``` emacs-lisp
+(droid-name . (
+            :pre-processors ... <optional>
+            :post-processors ... <optional>
+            :transient-key ...   <optional>
+            :system-prompt ""))
+```
+
+You can also use the helper function `c3po-add-new-droid-with-defaults-processors`.
+
+### Pre-processors
+
+- Called before calling the OpenAI API.
+- Each pre-processor function receives the droid and the user prompt.
+- You can write your own pre-processor, for example, write all the conversations to a persistent file.
+- This is what the default `c3po-add-to-buffer-pre-processor` does:
+
+``` emacs-lisp
+(defun c3po-add-to-buffer-pre-processor (droid prompt)
+  "Pre-processor to add the DROID and PROMPT to the `c3po-buffer-name'."
+  (c3po-append-result
+   (if (c3po-is-initial-system-message-p)
+       (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" droid (format-time-string "%A, %e %B %Y %T %Z") prompt)
+     (format "## 🙋‍♂️ Prompt\n%s\n" prompt)))) ;; for replies
+```
+
+### Post-processors
+
+- Called after receiving the OpenAI result.
+- Each post-processor function receives the droid, the user prompt, and the result. (advanced usage see args).
+- You can write your own post-processor, for example, write all the conversations to a persistent file.
+- This is what the default `c3po-add-to-buffer-post-processor` does:
+
+``` emacs-lisp
+(defun c3po-add-to-buffer-post-processor (_droid _prompt result &rest _args)
+  "Post-processor to add the RESULT to the `c3po-buffer-name'."
+  (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
+  (pop-to-buffer c3po-buffer-name)
+  (goto-char (point-max))
+  (recenter))
+```
+
+- The `corrector` droid uses this post-processors:
+
+``` emacs-lisp
+:post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
+```
+
+### Default droids configuration
+
+The default droids are created using:
+
+``` emacs-lisp
+(defvar c3po-droids-alist
+  '(
+    (assistant . (
+                  :pre-processors (c3po-add-to-buffer-pre-processor)
+                  :post-processors (c3po-add-to-buffer-post-processor)
+                  :transient-key "a"
+                  :system-prompt "You are a helpful assistant. Keep it concise."))
+    (corrector . (
+                  :pre-processors nil
+                  :post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
+                  :transient-key "c"
+                  :system-prompt "Please act as my grammar assistant...<and much more>"))
+    (developer . (
+                  :pre-processors (c3po-add-to-buffer-pre-processor)
+                  :post-processors (c3po-add-to-buffer-post-processor)
+                  :transient-key "d"
+                  :system-prompt "You're a programming expert who can provide guidance...<and much more>"))
+    (rewriter . (
+                  :pre-processors (c3po-add-to-buffer-pre-processor)
+                  :post-processors (c3po-add-to-buffer-post-processor c3po-show-diff-post-processor)
+                  :transient-key "r"
+                  :system-prompt "Please act as my writing assistant with a programming expertise...<and much more> ")))
+  "Alist of personas with a Plist of properties.
+Call `c3po-make-droid-helper-functions to have the helper functions created.")
+
+```
+
+### Example new droid
+
+``` emacs-lisp
+;; in my emacs config I have:
+  (c3po-add-new-droid-with-defaults-processors 'synonymizer "s"
+                                                 "
+I want you to act as a synonyms provider.
+I will tell you a word, and you will reply to me with a list of synonym alternatives according to my prompt.
+Provide a list of 5 synonyms per prompt, 3 short examples, and a list of 5 antonyms.
+You will only reply the words list, and nothing else, please use this template:
+**Synonyms:**
+-
+
+**Examples:**
+-
+
+**Antonyms:**
+-
+")
+```
 
 ## Examples
+
+TODO: Update the videos
 
 ### Using a dev persona
 `c3po-dev-chat` and `c3po-reply`.
