@@ -39,7 +39,14 @@
 (defvar c3po--last-used-persona nil "Last used persona to be used for replies.")
 
 (defvar c3po-system-persona-prompts-alist
-  '((corrector . (
+  '(
+    (assistant . (
+                :pre-processors (c3po-add-to-buffer-pre-processor)
+                :post-processors (c3po-add-to-buffer-post-processor)
+                :transient-key "a"
+                :system-prompt "You are a helpful assistant. Keep it concise."))
+
+    (corrector . (
                   :pre-processors nil
                   :post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
                   :transient-key "c"
@@ -47,41 +54,23 @@
 Please act as my grammar assistant.
 
 I'll communicate with you in any language and you will correct and enhance the grammar in my text.
-
 You should not modify contractions and avoid passive voice.
-If I write:
-user: I'll be fine
-You shouldn't answer with:
-assistant: I will be fine.
-You should answer with:
-assistant: I'll be fine.
-
 I want you to only reply with the correction and nothing else, no explanations or questions.
-
-If no corrections are needed, reply with the original text, example:
-If I write:
-user: Please act as my grammar assistant.
-You shouldn't answer with:
-assistant: No corrections needed, the sentence is grammatically correct.
-You should answer with:
-assistant: Please act as my grammar assistant.
-
-The raw messages will be specified next, don't expect more commands:."))
+If no corrections are needed, reply with the original text."))
 
     (developer . (
                   :pre-processors (c3po-add-to-buffer-pre-processor)
                   :post-processors (c3po-add-to-buffer-post-processor)
                   :transient-key "d"
                   :system-prompt "
-You're a programming expert.
+You're a programming expert who can provide guidance, tips, and best practices for various programming languages.
+You can review and analyze existing code, identify areas for optimization, and suggest changes to enhance performance, readability, and maintainability.
+Share insights on refactoring techniques, code organization, and following established coding standards to ensure a clean and consistent codebase.
+Offer guidance on improving error handling, optimizing resource usage, and implementing best practices to minimize potential bugs and security vulnerabilities.
+Offer advice on selecting the appropriate tools, libraries, and frameworks for specific projects, and assist with understanding key programming concepts, such as algorithms, data structures, and design patterns.
+
 Your answers should be brief.
 Your answers MUST be in full and well written markdown, code blocks MUST use the correct language tag."))
-
-    (general . (
-                :pre-processors (c3po-add-to-buffer-pre-processor)
-                :post-processors (c3po-add-to-buffer-post-processor)
-                :transient-key "g"
-                :system-prompt "You are a helpful assistant. Keep it concise."))
 
     (rewriter . (
                  :pre-processors (c3po-add-to-buffer-pre-processor)
@@ -146,12 +135,12 @@ It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (when-let ((processors (c3po-get-persona-property persona :post-processors)))
     (seq-do (lambda (f) (funcall f persona prompt result args)) processors)))
 
-(defun c3po--apply-post-processors-and-kill-region (persona prompt result &rest args)
+(defun c3po--apply-post-processors-and-replace-region (persona prompt result &rest args)
   "Get the PERSONA post-processors and invoke the function.
 It adds an additional processor to kill the current active region.
 It pass to the function the PERSONA, PROMPT, RESULT, and ARGS."
   (save-window-excursion
-    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--kill-region-post-processor))))
+    (when-let ((processors (append (c3po-get-persona-property persona :post-processors) '(c3po--replace-region-post-processor))))
       (seq-do (lambda (f) (funcall f persona prompt result args)) processors))))
 
 (defun c3po-is-initial-system-message-p ()
@@ -211,25 +200,25 @@ Call user's CALLBACK with the result and passes the aditional ARGS."
     (c3po--add-message "assistant" result)
     (apply callback persona prompt result args)))
 
-(defun c3po-send-conversation (persona post-processors-fn &rest args)
+(defun c3po-send-conversation (persona prompt post-processors-fn &rest args)
   "Prepare the PROMPT for the PERSONA.
 If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'.
 Pass ARGS to the `url-retrieve' function."
   (interactive)
   (catch 'my-tag
-    (let ((prompt (if current-prefix-arg
-                      (if (use-region-p)
-                          (concat
-                           (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name persona)) nil 'c3po-command-history)
-                           "\n"
-                           (buffer-substring-no-properties (region-beginning) (region-end)))
-                        (progn
-                          (message "When using universal-argument a region should be active.")
-                          (throw 'my-tag nil)))
-                    (if (use-region-p)
-                        (buffer-substring-no-properties (region-beginning) (region-end))
-                      (read-string (format "(%s)> Enter the prompt: " (symbol-name persona)) nil 'c3po-command-history))
-                    ))
+    (let ((prompt (or prompt (if current-prefix-arg
+                                 (if (use-region-p)
+                                     (concat
+                                      (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name persona)) nil 'c3po-command-history)
+                                      "\n"
+                                      (buffer-substring-no-properties (region-beginning) (region-end)))
+                                   (progn
+                                     (message "When using universal-argument a region should be active.")
+                                     (throw 'my-tag nil)))
+                               (if (use-region-p)
+                                   (buffer-substring-no-properties (region-beginning) (region-end))
+                                 (read-string (format "(%s)> Enter the prompt: " (symbol-name persona)) nil 'c3po-command-history))
+                               )))
           (post-fn (or post-processors-fn #'c3po--apply-post-processors)))
       (c3po--apply-pre-processors persona prompt)
       (c3po--add-message "user" prompt)
@@ -248,7 +237,7 @@ Pass ARGS to the `url-retrieve' function."
       (insert (concat "\n" str))
       (goto-char (point-max)))))
 
-(defun c3po--kill-region-post-processor (_persona prompt result &rest args)
+(defun c3po--replace-region-post-processor (_persona prompt result &rest args)
   "Callback used to kill region with RESULT using ARGS.
 Check PROMPT to validate if needs to add back the new line."
   ;; Adds back the final new line if the prompt had it.
@@ -267,14 +256,15 @@ Check PROMPT to validate if needs to add back the new line."
         (insert result))
       (keyboard-escape-quit))))
 
-(defun c3po-send-conversation-and-kill-region (persona)
+(defun c3po-send-conversation-and-replace-region (persona)
   "Setup c3po to start a `c3po-send-conversation' with PERSONA.
-And result will be used by `c3po--callback-kill-region'."
+And result will be used by `c3po--callback-replace-region'."
   (if (use-region-p)
       (let ((beg (region-beginning))
             (end (region-end)))
         (c3po-send-conversation persona
-                                #'c3po--apply-post-processors-and-kill-region
+                                nil
+                                #'c3po--apply-post-processors-and-replace-region
                                 (buffer-name) ; here is where the additional args are passed
                                 beg
                                 end))
@@ -294,7 +284,8 @@ Check if needs to fix RESULT new lines given the PROMPT."
   ;; Adds back the final new line if the prompt had it.
   (if (string-suffix-p "\n" prompt)
       (kill-new (concat result "\n"))
-    (kill-new result)))
+    (kill-new result))
+  (message "🤖 Result copied to kill ring!"))
 
 (defmacro !c3po--make-chat (persona)
   "Macro to create functions chats for each PERSONA."
@@ -302,23 +293,23 @@ Check if needs to fix RESULT new lines given the PROMPT."
      ,(format "Interact with the Chat API using the persona %s." (symbol-name persona))
      (interactive)
      (c3po-new-chat ',persona)
-     (c3po-send-conversation ',persona nil)))
+     (c3po-send-conversation ',persona nil nil)))
 
-(defmacro !c3po--make-kill-region-chat (persona)
+(defmacro !c3po--make-replace-region-chat (persona)
   "Macro to create functions to kill regions chats for each PERSONA."
-  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat-kill-region")) ()
+  `(defun ,(intern (concat "c3po-" (symbol-name persona) "-new-chat-replace-region")) ()
      ,(format "Interact with the Chat API using the persona %s. Also kill the region with the result." (symbol-name persona))
      (interactive)
      (c3po-new-chat ',persona)
-     (c3po-send-conversation-and-kill-region ',persona)))
+     (c3po-send-conversation-and-replace-region ',persona)))
 
 (defun c3po-make-persona-helper-functions ()
-  "Create all the persona chats and kill-region chats.
-Example: c3po-corrector-chat, c3po-corrector-chat-kill-region, etc."
+  "Create all the persona chats and replace-region chats.
+Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
   (dolist (element c3po-system-persona-prompts-alist)
     (let ((persona (car element)))
-      (eval `(!c3po--make-chat ,(car element)))
-      (eval `(!c3po--make-kill-region-chat ,(car element)))))
+      (eval `(!c3po--make-chat ,persona))
+      (eval `(!c3po--make-replace-region-chat ,persona))))
   (create-c3po-dispatch))
 
 (c3po-make-persona-helper-functions)
@@ -344,10 +335,14 @@ Example: c3po-corrector-chat, c3po-corrector-chat-kill-region, etc."
 (defun c3po-explain-code ()
   "Explain the code for the selected region, or prompt the user for input."
   (interactive)
-  (c3po-send-conversation
-   'developer
-   (lambda (prompt)
-     (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) prompt))))
+  (c3po-new-chat 'developer)
+  (let ((prompt (if (use-region-p)
+                    (buffer-substring-no-properties (region-beginning) (region-end))
+                  (read-string (format "(%s)> Enter the code " (symbol-name 'developer)) nil 'c3po-command-history))))
+    (c3po-send-conversation
+     'developer
+     (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) prompt)
+     nil)))
 
 (defun c3po--get-buffer-mode-as-tag ()
   "Get buffer mode as a string to be used as a tag for a markdown code block."
@@ -369,7 +364,19 @@ Example: c3po-corrector-chat, c3po-corrector-chat-kill-region, etc."
 (defun c3po-reply ()
   "Reply with a message and submit the new conversation."
   (interactive)
-  (c3po-send-conversation c3po--last-used-persona nil))
+  (c3po-send-conversation c3po--last-used-persona nil nil))
+
+;; Make sure to show the diff buffer when calling `c3po-corrector-new-chat-replace-region'.
+(advice-add 'c3po-corrector-new-chat-replace-region :after (lambda () (pop-to-buffer "*Diff*")))
+;; (advice-add 'c3po-show-diff-post-processor :after (lambda () (pop-to-buffer "*Diff*")))
+
+;; Deprecations
+(define-obsolete-function-alias 'c3po-chat 'c3po-assistant-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-dev-chat 'c3po-developer-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-rewrite 'c3po-rewriter-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-correct-grammar 'c3po-corrector-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-correct-grammar-and-replace 'c3po-corrector-new-chat-replace-region "1.0")
+(define-obsolete-function-alias 'c3po-new-session 'c3po-new-chat "1.0")
 
 (provide 'c3po)
 ;;; c3po.el ends here
