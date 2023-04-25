@@ -19,7 +19,7 @@
 ;;
 ;;; Code:
 
-(require 'diff-mode)
+(require 'diff)
 (require 'json)
 (if (fboundp 'markdown-mode)
     (require 'markdown-mode) ; https://github.com/jrblevin/markdown-mode
@@ -34,6 +34,8 @@
 
 (defvar c3po-buffer-name "*🤖C3PO🤖*" "The name of the C-3PO buffer.")
 
+(defvar c3po-diff-buffer-name "*🤖C3PO Diff🤖*" "The name of the C-3PO Diff buffer.")
+
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
 (defvar c3po--last-used-droid nil "Last used droid to be used for replies.")
@@ -41,48 +43,47 @@
 (defvar c3po-droids-alist
   '(
     (assistant . (
-                :pre-processors (c3po-add-to-buffer-pre-processor)
-                :post-processors (c3po-add-to-buffer-post-processor)
-                :transient-key "a"
-                :system-prompt "You are a helpful assistant. Keep it concise."))
+                  :pre-processors (c3po-add-to-buffer-pre-processor)
+                  :post-processors (c3po-add-to-buffer-post-processor)
+                  :system-prompt "You are a helpful assistant."))
 
-    (corrector . (
-                  :pre-processors nil
-                  :post-processors (c3po-show-diff-post-processor c3po-copy-clipboard-post-processor)
-                  :transient-key "c"
-                  :system-prompt "
-Please act as my grammar assistant.
-
-I'll communicate with you in any language and you will correct and enhance the grammar in my text.
-You should not modify contractions and avoid passive voice.
-I want you to only reply with the correction and nothing else, no explanations or questions.
-If no corrections are needed, reply with the original text."))
+    (grammar-checker . (
+                        :pre-processors (c3po-show-diff-pre-processor)
+                        :post-processors (c3po-show-diff-post-processor)
+                        :system-prompt "
+I will communicate with you in any language and you will correct, spelling, punctuation errors, and enhance the grammar in my text.
+You may use contractions and avoid passive voice.
+I want you to only reply with the correction and nothing else, do not provide additional information, only enhanced text or the original text."
+                        :prefix-first-prompt-with "Correct spelling and grammar. The raw text is:\n"))
 
     (developer . (
                   :pre-processors (c3po-add-to-buffer-pre-processor)
                   :post-processors (c3po-add-to-buffer-post-processor)
-                  :transient-key "d"
                   :system-prompt "
-You're a programming expert who can provide guidance, tips, and best practices for various programming languages.
+I want you to act as a programming expert who can provide guidance, tips, and best practices for various programming languages.
 You can review and analyze existing code, identify areas for optimization, and suggest changes to enhance performance, readability, and maintainability.
-Share insights on refactoring techniques, code organization, and following established coding standards to ensure a clean and consistent codebase.
-Offer guidance on improving error handling, optimizing resource usage, and implementing best practices to minimize potential bugs and security vulnerabilities.
-Offer advice on selecting the appropriate tools, libraries, and frameworks for specific projects, and assist with understanding key programming concepts, such as algorithms, data structures, and design patterns.
-
-Your answers should be brief.
-Your answers MUST be in full and well written markdown, code blocks MUST use the correct language tag."))
+Please share insights on refactoring techniques, code organization, and how to follow established coding standards to ensure a clean and consistent codebase.
+Please offer guidance on how to improve error handling, optimize resource usage, and implement best practices to minimize potential bugs and security vulnerabilities.
+Lastly, offer advice on selecting the appropriate tools, libraries, and frameworks for specific projects, and assist with understanding key programming concepts, such as algorithms, data structures, and design patterns.
+Your answers must be written in full and well-structured markdown. Code blocks must use the appropriate language tag."))
 
     (rewriter . (
                  :pre-processors (c3po-add-to-buffer-pre-processor)
                  :post-processors (c3po-add-to-buffer-post-processor c3po-show-diff-post-processor)
-                 :transient-key "r"
                  :system-prompt "
-Please act as my writing assistant with a programming expertise.
-I will speak to you in any language and you can enhance my text accordingly.
-Maintain the meaning, use contractions, and avoid passive voice.
-Your response MUST only include the improved text, without explanations or questions.
-Keep it concise.
-From now on, all my messages to you are intended to be enhanced")))
+I want you to acct as my writing assistant with strong programming skills.
+I'll converse with you in any language, and you can refine my writing.
+Use contractions, avoid too much passive voice, and preserve the meaning.
+Only provide the revised text.
+All of my future messages aim to be improved."
+                 :prefix-first-prompt-with "Rewrite this:\n"))
+
+    (summarizer  . (
+                    :pre-processors (c3po-add-to-buffer-pre-processor)
+                    :post-processors (c3po-add-to-buffer-post-processor)
+                    :system-prompt "You are a helpful assistant."
+                    :prefix-first-prompt-with "Summarize this:\n"))
+    )
   "Alist of droids with a Plist of properties.
 Call `c3po-make-droid-helper-functions' to have the helper functions created.")
 
@@ -92,30 +93,14 @@ Call `c3po-make-droid-helper-functions' to have the helper functions created.")
 (defvar c3po-chat-conversation '()
   "List of messages with droids user and assistant for the current chat.")
 
-(defun create-c3po-dispatch ()
-  "Creates a transient prefix dispatcher for each key in ALIST."
-  (let ((items nil))
-    (dolist (item c3po-droids-alist)
-      (let* (
-             (droid (car item))
-             (droid-name (symbol-name droid))
-             (cmd (intern (concat "c3po-" droid-name "-new-chat"))))
-        (push (list (c3po-get-droid-property droid :transient-key) droid-name cmd) items)))
-    (eval `(transient-define-prefix c3po-droids-dispatch ()
-             "C3PO transient dispatch."
-             [["🤖 Available Droids 🤖"
-               ,@items
-               ]]))))
-
-(defun c3po-add-new-droid-with-defaults-processors(droid transient-key system-prompt)
+(defun c3po-add-new-droid-with-defaults-processors(droid system-prompt)
   (if (symbolp droid)
       (progn
         (add-to-list 'c3po-droids-alist
                      `(,droid . (
-                                   :pre-processors (,'c3po-add-to-buffer-pre-processor)
-                                   :post-processors (,'c3po-add-to-buffer-post-processor)
-                                   :transient-key ,transient-key
-                                   :system-prompt ,system-prompt)))
+                                 :pre-processors (,'c3po-add-to-buffer-pre-processor)
+                                 :post-processors (,'c3po-add-to-buffer-post-processor)
+                                 :system-prompt ,system-prompt)))
         ;; recreate functions using the macros
         (c3po-make-droid-helper-functions))
     (message "Please use a symbol for the droid key")))
@@ -140,7 +125,9 @@ It pass to the function the DROID, PROMPT, RESULT, and ARGS."
 It adds an additional processor to kill the current active region.
 It pass to the function the DROID, PROMPT, RESULT, and ARGS."
   (save-window-excursion
-    (when-let ((processors (append (c3po-get-droid-property droid :post-processors) '(c3po--replace-region-post-processor))))
+    (when-let ((processors (append
+                            (c3po-get-droid-property droid :post-processors)
+                            '(c3po--replace-region-post-processor))))
       (seq-do (lambda (f) (funcall f droid prompt result args)) processors))))
 
 (defun c3po-is-initial-system-message-p ()
@@ -152,14 +139,13 @@ It pass to the function the DROID, PROMPT, RESULT, and ARGS."
   (c3po-append-result
    (if (c3po-is-initial-system-message-p)
        (format "\n# Chat (%s) - %s\n## 🙋‍♂️ Prompt\n%s\n" droid (format-time-string "%A, %e %B %Y %T %Z") prompt)
-     (format "## 🙋‍♂️ Prompt\n%s\n" prompt))))
+     (format "## 🙋‍♂️ Prompt\n%s\n" prompt)))
+  (recenter))
 
 (defun c3po-add-to-buffer-post-processor (_droid _prompt result &rest _args)
   "Post-processor to add the RESULT to the `c3po-buffer-name'."
   (c3po-append-result (format "### 🤖 Answer\n%s\n" result))
-  (pop-to-buffer c3po-buffer-name)
-  (goto-char (point-max))
-  (recenter))
+  (pop-to-buffer c3po-buffer-name))
 
 (defun c3po--request-openai-api (callback &rest args)
   "Send chat messages request to OpenAI API, get result via CALLBACK.
@@ -206,25 +192,32 @@ If POST-PROCESSORS-FN is nil it'll use `c3po--apply-post-processors'.
 Pass ARGS to the `url-retrieve' function."
   (interactive)
   (catch 'my-tag
-    (let ((prompt (or prompt (if current-prefix-arg
-                                 (if (use-region-p)
-                                     (concat
-                                      (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name droid)) nil 'c3po-command-history)
-                                      "\n"
-                                      (buffer-substring-no-properties (region-beginning) (region-end)))
-                                   (progn
-                                     (message "When using universal-argument a region should be active.")
-                                     (throw 'my-tag nil)))
-                               (if (use-region-p)
-                                   (buffer-substring-no-properties (region-beginning) (region-end))
-                                 (read-string (format "(%s)> Enter the prompt: " (symbol-name droid)) nil 'c3po-command-history))
-                               )))
-          (post-fn (or post-processors-fn #'c3po--apply-post-processors)))
+    (let* ((prompt (or
+                    prompt ;; a prompt was passed
+                    (if current-prefix-arg ;; add prefix to current region if any
+                        (if (use-region-p)
+                            (concat
+                             (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name droid)) nil 'c3po-command-history)
+                             "\n"
+                             (buffer-substring-no-properties (region-beginning) (region-end)))
+                          (progn
+                            (message "When using universal-argument a region should be active.")
+                            (throw 'my-tag nil)))
+                      (if (use-region-p) ;; use existing region or ask user for prompt
+                          (buffer-substring-no-properties (region-beginning) (region-end))
+                        (read-string (format "(%s)> Enter the prompt: " (symbol-name droid)) nil 'c3po-command-history))
+                      )))
+           (post-fn (or
+                     post-processors-fn
+                     #'c3po--apply-post-processors))
+           ;; in order to keep the user prompt without the configured droid prefix
+           (prompt-with-prefix (if (c3po-is-initial-system-message-p)
+                                   (concat (c3po-get-droid-property droid :prefix-first-prompt-with) prompt)
+                                 prompt)))
       (c3po--apply-pre-processors droid prompt)
-      (c3po--add-message "user" prompt)
-      (apply
-       #'c3po--request-openai-api
-       post-fn `((droid . ,droid) (prompt . ,prompt) (args . ,args))))))
+      (c3po--add-message "user" prompt-with-prefix)
+      (apply #'c3po--request-openai-api
+             post-fn `((droid . ,droid) (prompt . ,prompt) (args . ,args))))))
 
 (defun c3po-append-result (str)
   "Insert STR at the end of the c3po buffer."
@@ -234,8 +227,7 @@ Pass ARGS to the `url-retrieve' function."
           (gfm-mode)
         (text-mode))
       (goto-char (point-max))
-      (insert (concat "\n" str))
-      (goto-char (point-max)))))
+      (insert (concat "\n" str)))))
 
 (defun c3po--replace-region-post-processor (_droid prompt result &rest args)
   "Callback used to kill region with RESULT using ARGS.
@@ -270,22 +262,19 @@ And result will be used by `c3po--callback-replace-region'."
                                 end))
     (message "No region selected or region is empty")))
 
+(defun c3po-show-diff-pre-processor (_droid _prompt)
+  "Empty the buffer `c3po-buffer-name'."
+  (with-current-buffer (get-buffer-create c3po-diff-buffer-name)
+    (setq buffer-read-only nil)
+    (erase-buffer)))
+
 (defun c3po-show-diff-post-processor (_droid prompt result &rest _args)
   "Callback to show diff from PROMPT vs RESULT (tail of ARGS)."
   ;; Adds back the final new line if the prompt had it.
   (when (string-suffix-p "\n" prompt)
     (setq result (concat result "\n")))
   (c3po--diff-strings prompt result)
-  (pop-to-buffer "*Diff*"))
-
-(defun c3po-copy-clipboard-post-processor (_droid prompt result &rest _args)
-  "Post-processor to copy the RESULT to the kill ring.
-Check if needs to fix RESULT new lines given the PROMPT."
-  ;; Adds back the final new line if the prompt had it.
-  (if (string-suffix-p "\n" prompt)
-      (kill-new (concat result "\n"))
-    (kill-new result))
-  (message "🤖 Result copied to kill ring!"))
+  (pop-to-buffer c3po-diff-buffer-name))
 
 (defmacro !c3po--make-chat (droid)
   "Macro to create functions chats for each DROID."
@@ -309,10 +298,25 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
   (dolist (element c3po-droids-alist)
     (let ((droid (car element)))
       (eval `(!c3po--make-chat ,droid))
-      (eval `(!c3po--make-replace-region-chat ,droid))))
-  (create-c3po-dispatch))
+      (eval `(!c3po--make-replace-region-chat ,droid)))))
 
 (c3po-make-droid-helper-functions)
+
+(define-minor-mode c3po--diff-copy-mode
+  "C3PO diff copy mode.
+Use <C-c C-c> to close the diff buffer and copy the result to the kill ring."
+  :lighter "C3PO DIFF COPY MODE"
+  :keymap (let ((map (make-sparse-keymap)))
+            (define-key map (kbd "C-c C-c") #'c3po--diff-copy)
+            map))
+
+(defun c3po--diff-copy ()
+  "Copy `c3po--diff-result' to kill ring and kill `c3po-diff-buffer-name' buffer."
+  (interactive)
+  (let ((name c3po-diff-buffer-name))
+    (kill-new
+     (buffer-local-value 'c3po--diff-result (get-buffer name)))
+    (kill-buffer name)))
 
 (defun c3po--diff-strings (str1 str2)
   "Compare two strings (STR1 and STR2) and return the result."
@@ -323,11 +327,14 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
       (insert str1))
     (with-current-buffer buf2
       (insert str2))
-    ;; Perform the diff and store it in a new buffer
-    (with-temp-buffer
-      (diff buf1 buf2 "-U0") ; -U0: Unidiff with 0 lines of context
-      (diff-mode)
-      (diff-refine-hunk)) ; to highlight single character changes
+    (with-current-buffer (get-buffer-create c3po-diff-buffer-name)
+      ;; Perform the diff and store it in a new buffer
+      (diff-no-select buf1 buf2 "-U0" nil (current-buffer)) ; -U0: Unidiff with 0 lines of context
+      (toggle-truncate-lines 1)
+      (diff-refine-hunk) ; to highlight single character changes
+      (setq-local c3po--diff-result str2) ; Temporarily store the result locally.
+      (message "Use C-c C-c to copy the Diff result to the clipboard.")
+      (c3po--diff-copy-mode 1))
     (kill-buffer buf1)
     (kill-buffer buf2)
     diff-output))
@@ -366,17 +373,17 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
   (interactive)
   (c3po-send-conversation c3po--last-used-droid nil nil))
 
-;; Make sure to show the diff buffer when calling `c3po-corrector-new-chat-replace-region'.
-(advice-add 'c3po-corrector-new-chat-replace-region :after (lambda () (pop-to-buffer "*Diff*")))
-;; (advice-add 'c3po-show-diff-post-processor :after (lambda () (pop-to-buffer "*Diff*")))
+;; Make sure to show the diff buffer when calling the functions:
+;; `c3po-grammar-checker-new-chat-replace-region' and `c3po-rewriter-new-chat-replace-region'.
+(advice-add 'c3po-grammar-checker-new-chat-replace-region :after (lambda () (pop-to-buffer c3po-diff-buffer-name)))
+(advice-add 'c3po-rewriter-new-chat-replace-region :after (lambda () (pop-to-buffer c3po-diff-buffer-name)))
 
 ;; Deprecations
 (define-obsolete-function-alias 'c3po-chat 'c3po-assistant-new-chat "1.0")
-(define-obsolete-function-alias 'c3po-dev-chat 'c3po-developer-new-chat "1.0")
-(define-obsolete-function-alias 'c3po-rewrite 'c3po-rewriter-new-chat "1.0")
 (define-obsolete-function-alias 'c3po-correct-grammar 'c3po-corrector-new-chat "1.0")
 (define-obsolete-function-alias 'c3po-correct-grammar-and-replace 'c3po-corrector-new-chat-replace-region "1.0")
-(define-obsolete-function-alias 'c3po-new-session 'c3po-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-dev-chat 'c3po-developer-new-chat "1.0")
+(define-obsolete-function-alias 'c3po-rewrite 'c3po-rewriter-new-chat "1.0")
 
 (provide 'c3po)
 ;;; c3po.el ends here
