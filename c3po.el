@@ -36,6 +36,8 @@
 
 (defvar c3po-diff-buffer-name "*🤖C3PO Diff🤖*" "The name of the C-3PO Diff buffer.")
 
+(defvar c3po-input-buffer-name "*🤖C3PO input buffer🤖*" "The name of the C-3PO input buffer.")
+
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
 (defvar c3po--last-used-droid nil "Last used droid to be used for replies.")
@@ -86,9 +88,6 @@ All of my future messages aim to be improved."
     )
   "Alist of droids with a Plist of properties.
 Call `c3po-make-droid-helper-functions' to have the helper functions created.")
-
-(defvar c3po-command-history nil
-  "History of commands for C3PO.")
 
 (defvar c3po-chat-conversation '()
   "List of messages with droids user and assistant for the current chat.")
@@ -197,7 +196,7 @@ Pass ARGS to the `url-retrieve' function."
                     (if current-prefix-arg ;; add prefix to current region if any
                         (if (use-region-p)
                             (concat
-                             (read-string (format "(%s)> Enter the prompt to act on the active region: " (symbol-name droid)) nil 'c3po-command-history)
+                             (c3po--make-input-buffer (format "(%s)> Enter the prompt to act on the active region" (symbol-name droid)))
                              "\n"
                              (buffer-substring-no-properties (region-beginning) (region-end)))
                           (progn
@@ -205,7 +204,7 @@ Pass ARGS to the `url-retrieve' function."
                             (throw 'my-tag nil)))
                       (if (use-region-p) ;; use existing region or ask user for prompt
                           (buffer-substring-no-properties (region-beginning) (region-end))
-                        (read-string (format "(%s)> Enter the prompt: " (symbol-name droid)) nil 'c3po-command-history))
+                        (c3po--make-input-buffer (format "(%s)> Enter the prompt" (symbol-name droid))))
                       )))
            (post-fn (or
                      post-processors-fn
@@ -302,13 +301,41 @@ Example: c3po-corrector-chat, c3po-corrector-chat-replace-region, etc."
 
 (c3po-make-droid-helper-functions)
 
-(define-minor-mode c3po--diff-copy-mode
+(defvar c3po-diff-copy-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "\C-c\C-c" #'c3po--diff-copy)
+    map)
+  "Keymap for `c3po--diff-copy', a minor mode.")
+
+(define-minor-mode c3po-diff-copy-mode
   "C3PO diff copy mode.
-Use <C-c C-c> to close the diff buffer and copy the result to the kill ring."
-  :lighter "C3PO DIFF COPY MODE"
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-c C-c") #'c3po--diff-copy)
-            map))
+Use `\\[c3po--diff-copy]' to close the diff buffer and copy the result to the kill ring."
+  :lighter "C3PO-DIFF"
+  (setq-local header-line-format (substitute-command-keys
+                                  "C3PO Diff buffer.  Copy to clipboard: `\\[c3po--diff-copy]'.")))
+
+(defun c3po--make-input-buffer (prompt)
+  "Display the input buffer, capture input, and return the content when closed.
+Uses PROMPT as header line format.  Buffer is closed using `\\[c3po--diff-copy]'."
+  (let* ((buffer (get-buffer-create c3po-input-buffer-name))
+         (input ""))
+    (with-current-buffer buffer
+      (erase-buffer)
+      (setq-local header-line-format (format "%s. Finish ‘C-c C-c’, abort ‘C-c C-k’." prompt))
+      (keymap-local-set "C-c C-c"
+                        (lambda ()
+                          (interactive)
+                          (setq input (buffer-string))
+                          (kill-buffer)
+                          (exit-recursive-edit))))
+    (keymap-local-set "C-c C-k"
+                      (lambda ()
+                        (interactive)
+                        (kill-buffer)
+                        (abort-recursive-edit)))
+    (pop-to-buffer buffer)
+    (recursive-edit)
+    input))
 
 (defun c3po--diff-copy ()
   "Copy `c3po--diff-result' to kill ring and kill `c3po-diff-buffer-name' buffer."
@@ -333,8 +360,7 @@ Use <C-c C-c> to close the diff buffer and copy the result to the kill ring."
       (toggle-truncate-lines 1)
       (diff-refine-hunk) ; to highlight single character changes
       (setq-local c3po--diff-result str2) ; Temporarily store the result locally.
-      (message "Use C-c C-c to copy the Diff result to the clipboard.")
-      (c3po--diff-copy-mode 1))
+      (c3po-diff-copy-mode 1))
     (kill-buffer buf1)
     (kill-buffer buf2)
     diff-output))
@@ -345,7 +371,7 @@ Use <C-c C-c> to close the diff buffer and copy the result to the kill ring."
   (c3po-new-chat 'developer)
   (let ((prompt (if (use-region-p)
                     (buffer-substring-no-properties (region-beginning) (region-end))
-                  (read-string (format "(%s)> Enter the code " (symbol-name 'developer)) nil 'c3po-command-history))))
+                  (c3po--make-input-buffer (format "(%s)> Enter the code " (symbol-name 'developer))))))
     (c3po-send-conversation
      'developer
      (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) prompt)
