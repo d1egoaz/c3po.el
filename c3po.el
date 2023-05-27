@@ -316,10 +316,13 @@ Use `\\[c3po--diff-copy]' to close the diff buffer and copy the result to the ki
 
 (defun c3po--make-input-buffer (prompt)
   "Display the input buffer, capture input, and return the content when closed.
-Uses PROMPT as header line format.  Buffer is closed using `\\[c3po--diff-copy]'."
+Uses PROMPT as header line format."
   (let* ((buffer (get-buffer-create c3po-input-buffer-name))
          (input ""))
     (with-current-buffer buffer
+      (if (featurep 'markdown-mode)
+          (gfm-mode)
+        (text-mode))
       (erase-buffer)
       (setq-local header-line-format (format "%s. Finish ‘C-c C-c’, abort ‘C-c C-k’." prompt))
       (keymap-local-set "C-c C-c"
