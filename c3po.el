@@ -216,6 +216,7 @@ Pass ARGS to the `url-retrieve' function."
       (if (featurep 'markdown-mode)
           (gfm-mode)
         (text-mode))
+          (setq-local header-line-format (format "Last used Droid 🤖: %s, Model: %s" c3po--last-used-droid c3po-model))
       (goto-char (point-max))
       (insert (concat "\n" str)))))
 
