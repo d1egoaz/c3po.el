@@ -216,7 +216,9 @@ Pass ARGS to the `url-retrieve' function."
       (if (featurep 'markdown-mode)
           (gfm-mode)
         (text-mode))
-          (setq-local header-line-format (format "Last used Droid 🤖: %s, Model: %s" c3po--last-used-droid c3po-model))
+      (setq-local header-line-format
+                  (concat "🤖:" (propertize (symbol-name c3po--last-used-droid) 'face '(:foreground "DarkGoldenrod3"))
+                          " " (propertize c3po-model 'face '(:foreground "aquamarine3"))))
       (goto-char (point-max))
       (insert (concat "\n" str)))))
 
@@ -363,7 +365,7 @@ Uses PROMPT as header line format."
   (pop-to-buffer buffer `((display-buffer-in-direction)
                           (direction . down)
                           (dedicated . t)
-                          (window-height . 0.3))))
+                          (window-height . 0.6))))
 
 (defun c3po--diff-copy ()
   "Copy `c3po--diff-result' to kill ring and kill `c3po-diff-buffer-name' buffer."
