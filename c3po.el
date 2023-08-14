@@ -3,7 +3,7 @@
 ;; Author: Diego Alvarez <c3po@diegoa.ca>
 ;; Keywords: c3po, chatgpt, openai
 ;; Package-Requires: ((emacs "27.1"))
-;; Version: 1.0
+;; Version: 0.202308
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -75,18 +75,15 @@ Use contractions, avoid too much passive voice, and preserve the meaning.
 Only provide the revised text.
 All of my future messages aim to be improved."
                  :prefix-first-prompt-with "Rewrite this:\n"))
-
-    (summarizer  . (
-                    :system-prompt "You are a helpful assistant."
-                    :prefix-first-prompt-with "Summarize this:\n"))
     )
   "Alist of droids with a Plist of properties.
-Call `c3po-make-droid-helper-functions' to have the helper functions created.")
+Call `c3po-make-droid-helper-functions' to have the helper functions created if you modify this variable manually.")
 
 (defvar c3po-chat-conversation '()
   "List of messages with droids user and assistant for the current chat.")
 
 (defun c3po-add-new-droid(droid)
+  "Basic function to add a DROID to the droids list."
   (add-to-list 'c3po-droids-alist droid)
   ;; recreate functions using the macros
   (c3po-make-droid-helper-functions))
@@ -217,8 +214,8 @@ Pass ARGS to the `url-retrieve' function."
           (gfm-mode)
         (text-mode))
       (setq-local header-line-format
-                  (concat "🤖:" (propertize (symbol-name c3po--last-used-droid) 'face '(:foreground "DarkGoldenrod3"))
-                          " " (propertize c3po-model 'face '(:foreground "aquamarine3"))))
+                  (concat "Droid 🤖: " (propertize (symbol-name c3po--last-used-droid) 'face '(:foreground "DarkGoldenrod3"))
+                          " Model ✨: " (propertize c3po-model 'face '(:foreground "aquamarine3"))))
       (goto-char (point-max))
       (insert (concat "\n" str)))))
 
@@ -267,7 +264,7 @@ And result will be used by `c3po--callback-replace-region'."
   (when (string-suffix-p "\n" prompt)
     (setq result (concat result "\n")))
   (c3po--diff-strings prompt result)
-  (c3po--pop-input-buffer c3po-diff-buffer-name))
+  (c3po--pop-helper-buffer c3po-diff-buffer-name))
 
 (defmacro !c3po--make-chat (droid)
   "Macro to create functions chats for each DROID."
@@ -326,46 +323,32 @@ Uses PROMPT as header line format."
                           (kill-buffer)
                           (exit-recursive-edit))))
     ;; TODO: find out why it doesn't work
-    ;; (keymap-local-set "C-c C-k"
-    ;;                   (lambda ()
-    ;;                     (interactive)
-    ;;                     (kill-buffer)
-    ;;                     (abort-recursive-edit)))
+    (keymap-local-set "C-c C-k"
+                      (lambda ()
+                        (interactive)
+                        (kill-buffer)
+                        (abort-recursive-edit)))
     (c3po-pop-results-buffer)
-    (c3po--pop-input-buffer buffer)
+    (c3po-append-result "")
+    (c3po--pop-helper-buffer buffer)
     (recursive-edit)
     input))
 
 (defun c3po-pop-results-buffer ()
   "Display `c3po-buffer-name' in a right side window."
   (interactive)
-  (get-buffer-create c3po-buffer-name)
-  (pop-to-buffer
-   c3po-buffer-name
-   '((display-buffer-in-direction)
-     (dedicated . t)
-     (direction . right)
-     (window-width . 0.5))))
+  (let ((buffer (get-buffer-create c3po-buffer-name)))
+    (display-buffer-in-side-window buffer
+                                   '((side . right)
+                                     (window-width . 0.5)))))
 
-(defmacro chatgpt--with-no-redisplay (&rest body)
-  "Execute BODY without any redisplay execution."
-  (declare (indent 0) (debug t))
-  `(let ((inhibit-redisplay t)
-         (inhibit-modification-hooks t)
-         after-focus-change-function
-         buffer-list-update-hook
-         display-buffer-alist
-         window-configuration-change-hook
-         window-scroll-functions
-         window-size-change-functions
-         window-state-change-hook)
-     ,@body))
-
-(defun c3po--pop-input-buffer (buffer)
-  (pop-to-buffer buffer `((display-buffer-in-direction)
-                          (direction . down)
-                          (dedicated . t)
-                          (window-height . 0.6))))
+(defun c3po--pop-helper-buffer (buffer)
+  "Show BUFFER on the bottom as a side window."
+  (let ((window (display-buffer-in-side-window
+                 buffer
+                 '((side . bottom)
+                   (window-height . 0.5)))))
+    (select-window window)))
 
 (defun c3po--diff-copy ()
   "Copy `c3po--diff-result' to kill ring and kill `c3po-diff-buffer-name' buffer."
@@ -431,15 +414,24 @@ Uses PROMPT as header line format."
 
 ;; Make sure to show the diff buffer when calling the functions:
 ;; `c3po-grammar-checker-new-chat-replace-region' and `c3po-rewriter-new-chat-replace-region'.
-(advice-add 'c3po-grammar-checker-new-chat-replace-region :after (lambda () (c3po--pop-input-buffer c3po-diff-buffer-name)))
-(advice-add 'c3po-rewriter-new-chat-replace-region :after (lambda () (c3po--pop-input-buffer c3po-diff-buffer-name)))
+(advice-add 'c3po-grammar-checker-new-chat-replace-region :after (lambda () (c3po--pop-helper-buffer c3po-diff-buffer-name)))
+(advice-add 'c3po-rewriter-new-chat-replace-region :after (lambda () (c3po--pop-helper-buffer c3po-diff-buffer-name)))
 
-;; Deprecations
-(define-obsolete-function-alias 'c3po-chat 'c3po-assistant-new-chat "1.0")
-(define-obsolete-function-alias 'c3po-correct-grammar 'c3po-corrector-new-chat "1.0")
-(define-obsolete-function-alias 'c3po-correct-grammar-and-replace 'c3po-corrector-new-chat-replace-region "1.0")
-(define-obsolete-function-alias 'c3po-dev-chat 'c3po-developer-new-chat "1.0")
-(define-obsolete-function-alias 'c3po-rewrite 'c3po-rewriter-new-chat "1.0")
+(defun c3po-toggle-c3po-model ()
+  "Toggle the model between GPT 3.5 and 4."
+  (interactive)
+  (setq c3po-model
+        (if (string-equal c3po-model "gpt-3.5-turbo")
+            "gpt-4"
+          "gpt-3.5-turbo"))
+  (message "ChatGPT model changed to: %S" c3po-model))
+
+;; Deprecations:
+(define-obsolete-function-alias 'c3po-chat 'c3po-assistant-new-chat "0.202308")
+(define-obsolete-function-alias 'c3po-correct-grammar 'c3po-grammar-checker-new-chat "0.202308")
+(define-obsolete-function-alias 'c3po-correct-grammar-and-replace 'c3po-grammar-checker-new-chat-replace-region "0.202308")
+(define-obsolete-function-alias 'c3po-dev-chat 'c3po-developer-new-chat "0.202308")
+(define-obsolete-function-alias 'c3po-rewrite 'c3po-rewriter-new-chat "0.202308")
 
 (provide 'c3po)
 ;;; c3po.el ends here
