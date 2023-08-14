@@ -345,7 +345,7 @@ Uses PROMPT as header line format."
 (defun c3po--pop-helper-buffer (buffer)
   "Show BUFFER on the bottom as a side window."
   (let ((window (display-buffer-in-side-window
-                 buffer
+                 (get-buffer  buffer)
                  '((side . bottom)
                    (window-height . 0.5)))))
     (select-window window)))
