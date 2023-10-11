@@ -40,6 +40,8 @@
 
 (defvar c3po-model "gpt-3.5-turbo" "The model for the OpenAI Chat API.")
 
+(defvar c3po-temperature 1.0 "The temperature for the OpenAI Chat API.")
+
 (defvar c3po--last-used-droid nil "Last used droid to be used for replies.")
 
 (defvar c3po-default-pre-processors '(c3po-add-to-buffer-pre-processor) "List of default pre-processors applied to all droids.")
@@ -141,11 +143,12 @@ Pass additional ARGS to the CALLBACK function."
     (let* ((api-key c3po-api-key)
            (url "https://api.openai.com/v1/chat/completions")
            (model c3po-model)
+           (temperature c3po-temperature)
            (url-request-method "POST")
            (url-request-extra-headers `(("Content-Type" . "application/json")
                                         ("Authorization" . ,(encode-coding-string(format "Bearer %s" api-key) 'utf-8))))
            (url-request-data (encode-coding-string
-                              (json-encode `(:model ,model :messages ,c3po-chat-conversation))
+                              (json-encode `(:model ,model :messages ,c3po-chat-conversation :temperature ,temperature ))
                               'utf-8)))
       (url-retrieve url
                     #'c3po--extract-content-answer
