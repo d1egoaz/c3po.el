@@ -186,16 +186,15 @@ Pass ARGS to the `url-retrieve' function."
                     prompt ;; a prompt was passed
                     (if current-prefix-arg ;; add prefix to current region if any
                         (if (use-region-p)
-                            (concat
-                             (c3po--make-input-buffer (format "(%s)> Enter the prompt to act on the active region" (symbol-name droid)))
-                             "\n"
-                             (buffer-substring-no-properties (region-beginning) (region-end)))
+                            (c3po--make-input-buffer (format "(%s)> Enter the prompt to act on the active region" (symbol-name droid))
+                                                     (buffer-substring-no-properties (region-beginning) (region-end))
+                                                     (c3po--get-buffer-mode-as-tag))
                           (progn
                             (message "When using universal-argument a region should be active.")
                             (throw 'my-tag nil)))
                       (if (use-region-p) ;; use existing region or ask user for prompt
                           (buffer-substring-no-properties (region-beginning) (region-end))
-                        (c3po--make-input-buffer (format "(%s)> Enter the prompt" (symbol-name droid))))
+                        (c3po--make-input-buffer (format "(%s)> Enter the prompt" (symbol-name droid)) nil nil))
                       )))
            (post-fn (or
                      post-processors-fn
@@ -310,7 +309,7 @@ Use `\\[c3po--diff-copy]' to close the diff buffer and copy the result to the ki
   (setq-local header-line-format (substitute-command-keys
                                   "C3PO Diff buffer.  Copy to clipboard: `\\[c3po--diff-copy]'.")))
 
-(defun c3po--make-input-buffer (prompt)
+(defun c3po--make-input-buffer (prompt context lang)
   "Display the input buffer, capture input, and return the content when closed.
 Uses PROMPT as header line format."
   (let* ((buffer (get-buffer-create c3po-input-buffer-name))
@@ -320,6 +319,11 @@ Uses PROMPT as header line format."
           (gfm-mode)
         (text-mode))
       (erase-buffer)
+      (when (and (featurep 'evil) (bound-and-true-p evil-local-mode))
+        (evil-insert-state))
+      (when (and context lang)
+        (insert (format "\n\n>>> Context:\n```%s\n%s```" lang context))
+        (goto-char 0))
       (setq-local header-line-format (format "%s. Finish ‘C-c C-c’, abort ‘C-c C-k’." prompt))
       (keymap-local-set "C-c C-c"
                         (lambda ()
@@ -389,7 +393,7 @@ Uses PROMPT as header line format."
   (c3po-new-chat 'developer)
   (let ((prompt (if (use-region-p)
                     (buffer-substring-no-properties (region-beginning) (region-end))
-                  (c3po--make-input-buffer (format "(%s)> Enter the code " (symbol-name 'developer))))))
+                  (c3po--make-input-buffer (format "(%s)> Enter the code " (symbol-name 'developer)) nil nil))))
     (c3po-send-conversation
      'developer
      (format "Explain the following code, be concise:\n```%s\n%s```" (c3po--get-buffer-mode-as-tag) prompt)
