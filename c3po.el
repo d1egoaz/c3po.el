@@ -3,7 +3,7 @@
 ;; Author: Diego Alvarez <c3po@diegoa.ca>
 ;; Keywords: c3po, chatgpt, openai
 ;; Package-Requires: ((emacs "27.1"))
-;; Version: 0.202308
+;; Version: 0.202311
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
