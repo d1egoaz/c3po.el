@@ -18,6 +18,7 @@
 ;; it under the terms of the MIT License.
 ;;
 ;;; Code:
+(require 'compat) ;; for emacs < 29.
 
 (require 'diff)
 (require 'json)
