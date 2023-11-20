@@ -2,8 +2,8 @@
 
 ;; Author: Diego Alvarez <c3po@diegoa.ca>
 ;; Keywords: c3po, chatgpt, openai
-;; Package-Requires: ((emacs "27.1"))
-;; Version: 0.202311
+;; Package-Requires: ((emacs "27.1") (compat "29.1.0.0"))
+;; Version: 0.20231120
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -18,7 +18,7 @@
 ;; it under the terms of the MIT License.
 ;;
 ;;; Code:
-(require 'compat) ;; for emacs < 29.
+(require 'compat) ;; for emacs < 29, for keymap-local-set
 
 (require 'diff)
 (require 'json)
